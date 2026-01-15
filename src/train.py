@@ -1,9 +1,11 @@
 import hydra
+from hydra.utils import get_class, instantiate
 from omegaconf import DictConfig
-from data import get_data, get_collators
+
+from data import get_collators, get_data
+from evals import get_evaluators
 from model import get_model
 from trainer import load_trainer
-from evals import get_evaluators
 from trainer.utils import seed_everything
 
 
@@ -13,6 +15,7 @@ def main(cfg: DictConfig):
     Args:
         cfg (DictConfig): Config to train
     """
+    cfg = instantiate(cfg)
     seed_everything(cfg.trainer.args.seed)
     mode = cfg.get("mode", "train")
     model_cfg = cfg.model

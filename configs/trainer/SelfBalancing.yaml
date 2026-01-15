@@ -1,0 +1,30 @@
+defaults:
+  - finetune
+
+handler: SelfBalancing
+
+args: # HuggingFace TrainingArguments
+  learning_rate: 1e-5
+  num_train_epochs: 5
+
+method_args:
+  alpha: 2.0
+  gamma: 2.0
+
+  scorer_cfg:
+    _target_: trainer.unlearn.sb.ScorerConfig
+    input_dimension: 4096
+    layers: 1
+    scale_factor: 1.0
+    use_sigmoid: true
+    zero_init: true
+
+  scorer_optim_cfg:
+    _target_: trainer.unlearn.sb.ScorerOptimConfig
+    lr: 1.0e-2
+    weight_decay: 1.0e-4
+    momentum: 0.9
+
+    update_every_n_steps: 10
+    grad_clip: 1.0
+    loss_reduction: mean
