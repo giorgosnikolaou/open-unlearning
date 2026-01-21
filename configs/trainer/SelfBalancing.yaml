@@ -8,12 +8,14 @@ args: # HuggingFace TrainingArguments
   num_train_epochs: 5
 
 method_args:
-  alpha: 2.0
-  gamma: 2.0
+  alpha: 1.0
+  gamma: 1.0
+  use_softmax: true
 
   scorer_cfg:
     _target_: trainer.unlearn.sb.ScorerConfig
     input_dimension: 4096
+    # input_dimension: 2048
     layers: 1
     scale_factor: 1.0
     use_sigmoid: true
@@ -21,10 +23,10 @@ method_args:
 
   scorer_optim_cfg:
     _target_: trainer.unlearn.sb.ScorerOptimConfig
-    lr: 1.0e-2
+    lr: 1.0e-1
     weight_decay: 1.0e-4
     momentum: 0.9
 
-    update_every_n_steps: 10
+    update_every_n_steps: 5
     grad_clip: 1.0
     loss_reduction: mean

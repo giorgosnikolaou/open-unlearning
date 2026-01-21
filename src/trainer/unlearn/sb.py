@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -7,13 +8,21 @@ from typing import Any, Literal, Self, Type
 
 import torch
 import torch.nn.functional as F
+from accelerate import Accelerator
 from pydantic import BaseModel, ConfigDict, Field
 from torch import nn
 from torch.optim import SGD  # type: ignore
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR, 
+    LambdaLR, 
+    LinearLR,
+    LRScheduler, 
+    SequentialLR
+)
 from torch.optim.optimizer import Optimizer
 from transformers import TrainerCallback
 from transformers.modeling_outputs import CausalLMOutputWithPast
-from accelerate import Accelerator
+
 from trainer.unlearn.base import UnlearnTrainer
 from trainer.utils import compute_kl_divergence
 
@@ -50,6 +59,73 @@ class ScorerOptimConfig(BaseModel):
     update_every_n_steps: int = Field(10, gt=0, description="Update the scorer every \"n\" model optimizer steps (> 0)")
     grad_clip: float | None = Field(1.0, gt=0, description="Clip scorer gradient (> 0). Set to None to disable.")
     loss_reduction: Literal["mean", "sum"] = Field("mean", description="Loss reduction method")
+
+    scheduler: Literal["none", "linear", "cosine"] = "none"
+    warmup_ratio: float = Field(0.0, ge=0.0, le=1.0)
+    total_steps: int | None = Field(None, gt=0, description="Total scorer *update* steps (not model steps).")
+
+    def build_optimizer(self, model: nn.Module):
+        return SGD(
+            model.parameters(),
+            lr=self.lr,
+            momentum=self.momentum,
+            weight_decay=self.weight_decay,
+        )
+
+    def build_scheduler(
+        self,
+        optimizer: Optimizer,
+        *,
+        total_steps: int,
+    ) -> LRScheduler | None:
+        if self.scheduler == "none":
+            return None
+
+        total_steps = self.total_steps or total_steps
+
+        if total_steps <= 0:
+            raise ValueError("max_model_steps must be > 0 to derive total_steps.")
+
+        warmup = int(math.floor(self.warmup_ratio * total_steps))
+        warmup = max(0, min(warmup, total_steps - 1))
+
+        # No need for error checking here since Pydantic makes sure warmup_ration \in [0,1]
+        main_steps = total_steps - warmup
+
+        # Warmup: linear 0 -> 1 multiplier
+        warmup_sched: LRScheduler | None = None
+        if warmup > 0:
+            warmup_sched = LambdaLR(
+                optimizer,
+                lr_lambda=lambda step: step / max(1, warmup),
+            )
+
+        # We dont need to have an else statement since 
+        # `self.scheduler` \in ["none", "linear", "cosine"] is ensured by pydantic
+        main_sched: LRScheduler = None # type: ignore
+        if self.scheduler == "linear":
+            main_sched = LinearLR(
+                optimizer,
+                start_factor=1.0,
+                end_factor=0.0,
+                total_iters=main_steps,
+            )
+        elif self.scheduler == "cosine":
+            main_sched = CosineAnnealingLR(
+                optimizer,
+                T_max=main_steps,
+                eta_min=0.0, # type: ignore # Pylance is indicating `eta_min` should be an int which is wrong.
+            )
+
+        # Combine warmup + main
+        if warmup_sched is not None:
+            return SequentialLR(
+                optimizer,
+                schedulers=[warmup_sched, main_sched],
+                milestones=[warmup],
+            )
+
+        return main_sched
 
 
 # -----------------------------
@@ -165,18 +241,36 @@ class Cache:
 class SequenceWiseLosses:
     def __init__(self):
         self.loss_function = nn.CrossEntropyLoss(ignore_index=-100, reduction="none")
+        self.counter = 0
 
     def NLL(
         self,
         cache: Cache,
-        scorer: nn.Module,
+        scorer: nn.Module | None,
         scorer_requires_grad: bool = False,
         stop_grad_through_scores: bool = True,
+        use_softmax: bool = False,
+        invert_probabilities: bool = False,
     ):
         token_loss = cache.token_loss
         hidden_states = cache.hidden_states
         shifted_labels = cache.shifted_labels
         mask = shifted_labels != -100
+
+        if scorer is None:
+            scores = torch.ones_like(token_loss) 
+            scores = scores.masked_fill(~mask, 0.0)
+            scores /= mask.sum(dim=1, keepdim=True)
+            return (
+                (token_loss * scores)[mask].mean(), 
+                scores, 
+                mask
+            )
+            # return (
+            #     token_loss[mask].mean(), 
+            #     torch.ones_like(token_loss), 
+            #     mask
+            # )
 
         hs_for_scorer = (
             hidden_states.detach()
@@ -188,8 +282,28 @@ class SequenceWiseLosses:
         with scorer_ctx:
             scores = scorer(hs_for_scorer)
 
+            if invert_probabilities:
+                scores = 1 - scores
+
+            if use_softmax:
+                # counts = mask.sum(dim=1, keepdim=True)  # (#valid tokens per row)
+                # probs = probs.masked_fill(~mask, 0.0)
+                # probs = torch.where(counts > 0, probs, torch.zeros_like(probs))
+
+                # scores = probs * counts
+
+                scores = torch.softmax(scores.masked_fill(~mask, -float("inf")), dim=1)
+
+            self.counter += 1
+            if self.counter % 25 == 0:
+                print(f'Min : {scores[mask].min().item():.4f}')
+                print(f'Max : {scores[mask].max().item():.4f}')
+                print(f'Mean: {scores[mask].mean().item():.4f}')
+                print(f'STD : {scores[mask].std().item():.4f}')
+        
+        scores = scores.masked_fill(~mask, 0.0)
         weighted_loss = (token_loss * scores)[mask].mean()
-        return weighted_loss
+        return weighted_loss, scores, mask
 
 
 # -----------------------------
@@ -201,6 +315,7 @@ class ScorerUpdateCallback(TrainerCallback):
         self,
         scorer: nn.Module,
         scorer_optimizer: Optimizer,
+        scorer_scheduler: LRScheduler | None,
         update_every_n_steps: int,
         scorer_grad_clip: float | None,
         accelerator: Accelerator | None
@@ -210,6 +325,8 @@ class ScorerUpdateCallback(TrainerCallback):
         
         self.scorer_optimizer = scorer_optimizer
         self.scorer_optimizer.zero_grad(set_to_none=True)
+
+        self.scorer_scheduler = scorer_scheduler
         
         self.update_every_n_steps = update_every_n_steps
         self.scorer_grad_clip = scorer_grad_clip
@@ -231,6 +348,17 @@ class ScorerUpdateCallback(TrainerCallback):
             base.clip_grad_norm_(self.scorer.parameters(), self.scorer_grad_clip)
 
         self.scorer_optimizer.step()
+        self.scorer_optimizer.zero_grad(set_to_none=True)
+
+        if self.scorer_scheduler is not None:
+            lr_before = self.scorer_optimizer.param_groups[0]["lr"]
+            print(f"[Scorer] LR before step: {lr_before:.6e}")
+
+            self.scorer_scheduler.step()
+
+            lr_after = self.scorer_optimizer.param_groups[0]["lr"]
+            print(f"[Scorer] LR after step:  {lr_after:.6e}")
+
 
         return control
 
@@ -245,6 +373,7 @@ class SelfBalancing(UnlearnTrainer):
 
         gamma: float,
         alpha: float,
+        use_softmax: bool,
 
         scorer_cfg: ScorerConfig,
         scorer_optim_cfg: ScorerOptimConfig,
@@ -256,26 +385,36 @@ class SelfBalancing(UnlearnTrainer):
 
         self.gamma = gamma
         self.alpha = alpha
+        self.use_softmax = use_softmax
+
+        self.scorer_cfg = scorer_cfg
+        self.scorer_optim_cfg = scorer_optim_cfg
 
         self.loss = SequenceWiseLosses()
 
         device = getattr(self, "accelerator", self.model).device
+        
         self.scorer = Scorer.from_config(scorer_cfg).to(device)
-        self.scorer_optimizer: Optimizer = SGD(
-            self.scorer.parameters(),
-            lr=scorer_optim_cfg.lr,
-            momentum=scorer_optim_cfg.momentum,
-            weight_decay=scorer_optim_cfg.weight_decay,
+        
+        self.scorer_optimizer: Optimizer = scorer_optim_cfg.build_optimizer(self.scorer)
+        self.scorer_scheduler: LRScheduler | None = scorer_optim_cfg.build_scheduler(
+            self.scorer_optimizer, 
+            total_steps=self.compute_total_scorer_steps()
         )
 
         if self.accelerator is not None:
-            self.scorer, self.scorer_optimizer = self.accelerator.prepare(self.scorer, self.scorer_optimizer)
+            self.scorer, self.scorer_optimizer, self.scorer_scheduler = self.accelerator.prepare(
+                self.scorer, 
+                self.scorer_optimizer,
+                self.scorer_scheduler
+            )
 
         self.scorer_optim_cfg = scorer_optim_cfg
         self.add_callback(
             ScorerUpdateCallback(
                 self.scorer,
                 self.scorer_optimizer,
+                self.scorer_scheduler,
                 scorer_optim_cfg.update_every_n_steps,
                 scorer_optim_cfg.grad_clip,
                 self.accelerator
@@ -285,6 +424,21 @@ class SelfBalancing(UnlearnTrainer):
             # scorer_optim_cfg.update_every_n_steps * # Uncomment if we backprop on every batch
             getattr(self.args, "gradient_accumulation_steps", 1)
         )
+
+    def compute_total_scorer_steps(self):
+        train_loader = self.get_train_dataloader()
+        
+        num_update_steps_per_epoch = len(train_loader) // self.args.gradient_accumulation_steps
+        num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
+        
+        max_steps = math.ceil(self.args.num_train_epochs * num_update_steps_per_epoch)
+
+        self.scorer_total_update_steps = (
+            (max_steps + self.scorer_optim_cfg.update_every_n_steps - 1) // 
+            self.scorer_optim_cfg.update_every_n_steps
+        )
+
+        return self.scorer_total_update_steps
 
     def save_model(self, output_dir: str | None = None, _internal_call: bool = False):
         super().save_model(output_dir=output_dir, _internal_call=_internal_call)
@@ -299,9 +453,62 @@ class SelfBalancing(UnlearnTrainer):
         model.requires_grad_(False)
         self.scorer.requires_grad_(True)
 
-        forget_loss_s = self.loss.NLL(forget_cache, self.scorer, scorer_requires_grad=True)
-        retain_loss_s = self.loss.NLL(retain_cache, self.scorer, scorer_requires_grad=True)
-        scorer_objective = self.alpha * retain_loss_s - self.gamma * forget_loss_s
+        ####################
+        # Implementation 1 #
+        ####################
+        # forget_loss_s, _, _ = self.loss.NLL(
+        #     forget_cache, 
+        #     self.scorer, 
+        #     scorer_requires_grad=True, 
+        #     use_softmax=self.use_softmax
+        # )
+        # retain_loss_s, _, _ = self.loss.NLL(
+        #     retain_cache, 
+        #     self.scorer, 
+        #     scorer_requires_grad=True,
+        #     use_softmax=self.use_softmax
+        # )
+        # scorer_objective = self.alpha * retain_loss_s - self.gamma * forget_loss_s
+
+
+        ####################
+        # Implementation 2 #
+        ####################
+        forget_loss_s, scores, mask = self.loss.NLL(
+            forget_cache, 
+            self.scorer, 
+            scorer_requires_grad=True, 
+            use_softmax=self.use_softmax
+        )
+        # scorer_objective = - self.gamma * forget_loss_s
+        # print(mask.sum(dim=-1))
+        # print(scores.sum(dim=-1) / mask.sum(dim=-1))
+        # exit(0)
+        # mean_scores = scores.sum(dim=-1) / mask.sum(dim=-1)
+        # scorer_objective = -forget_loss_s + 10 * F.mse_loss(
+        #     mean_scores, 
+        #     0.4 * torch.ones_like(mean_scores),
+        #     reduction='sum'
+        # )
+        scorer_objective = -forget_loss_s
+
+        ####################
+        # Implementation 3 #
+        ####################
+        # forget_loss_s, _, _ = self.loss.NLL(
+        #     forget_cache, 
+        #     self.scorer, 
+        #     scorer_requires_grad=True, 
+        #     use_softmax=self.use_softmax
+        # )
+        # retain_loss_s_on_forget, _, _ = self.loss.NLL(
+        #     forget_cache, 
+        #     self.scorer, 
+        #     scorer_requires_grad=True,
+        #     use_softmax=self.use_softmax,
+        #     invert_probabilities=True,
+        # )
+        # scorer_objective = retain_loss_s_on_forget - forget_loss_s
 
         if self.scorer_optim_cfg.loss_reduction == "mean":
             scorer_objective = scorer_objective / self.effective_batches
@@ -334,8 +541,20 @@ class SelfBalancing(UnlearnTrainer):
 
         self._scorer_backward(model, forget_cache, retain_cache)
 
-        forget_loss = self.loss.NLL(forget_cache, self.scorer, scorer_requires_grad=False)
-        retain_loss = self.loss.NLL(retain_cache, self.scorer, scorer_requires_grad=False)
+        forget_loss, _, _ = self.loss.NLL(
+            forget_cache, 
+            self.scorer, 
+            scorer_requires_grad=False, 
+            use_softmax=self.use_softmax
+        )
+        retain_loss, _, _ = self.loss.NLL(retain_cache, None, scorer_requires_grad=False)
+        # retain_loss, _, _ = self.loss.NLL(
+        #     retain_cache, 
+        #     self.scorer, 
+        #     scorer_requires_grad=False, 
+        #     use_softmax=self.use_softmax,
+        #     invert_probabilities=True
+        # )
         loss = self.alpha * retain_loss - self.gamma * forget_loss
 
         return (loss, forget_cache.outputs) if return_outputs else loss
