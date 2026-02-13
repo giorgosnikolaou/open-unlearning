@@ -1,0 +1,13 @@
+# @package eval.lkf.metrics.winrate
+# Note: This metric doesn't load a dataset directly
+# It compares results from previous repetitiveness evaluations
+
+handler: winrate_lkf
+gemini_api_key: null  # Set via GOOGLE_API_KEY environment variable
+
+# Task identifier
+eval_task: winrate
+
+# Inherit shared settings from parent
+judge: ${eval.lkf.judge}
+output_base: ${eval.lkf.output}

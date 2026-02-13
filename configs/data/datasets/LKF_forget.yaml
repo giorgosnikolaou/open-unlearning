@@ -1,0 +1,6 @@
+LKF_forget:
+  handler: HFDataset
+  args:
+    hf_args:
+      path: "nmndeep/LKF-forget_eval_para"
+      split: "train"

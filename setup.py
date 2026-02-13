@@ -20,6 +20,9 @@ setup(
         "lm-eval": [
             "lm-eval==0.4.8",
         ],  # Install using `pip install .[lm-eval]`
+        "openai-judge": [
+            "openai>=1.0.0",
+        ],  # Install using `pip install .[openai-judge]`
         "dev": [
             "pre-commit==4.0.1",
             "ruff==0.6.9",

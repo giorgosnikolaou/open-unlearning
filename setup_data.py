@@ -2,6 +2,7 @@ import argparse
 import os
 import subprocess
 from huggingface_hub import snapshot_download
+import zipfile
 
 
 def download_eval_data():
@@ -29,7 +30,15 @@ def download_wmdp():
 
     os.makedirs(dest_dir, exist_ok=True)
     subprocess.run(["wget", url, "-O", zip_path], check=True)
-    subprocess.run(["unzip", "-P", "wmdpcorpora", zip_path, "-d", dest_dir], check=True)
+    try:
+        subprocess.run(["unzip", "-P", "wmdpcorpora", zip_path, "-d", dest_dir], check=True)
+    except:
+        with zipfile.ZipFile(zip_path, "r") as z:
+            pwd = b"wmdpcorpora"
+
+            for member in z.namelist():
+                z.extract(member, path=dest_dir, pwd=pwd)
+
 
 
 def main():
