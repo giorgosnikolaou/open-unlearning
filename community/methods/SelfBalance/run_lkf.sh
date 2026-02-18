@@ -17,7 +17,7 @@ model="Llama-3.2-3B-Instruct"
 # Model and data paths
 # model_path="open-unlearning/lkf_${model}_pretrained"  # Adjust to your pretrained model path
 model_path=meta-llama/${model}
-forget_dataset="LKF_forget"
+forget_dataset="LKF_para_forget"
 retain_dataset="LKF_retain"
 
 # Experiment configuration
@@ -90,15 +90,15 @@ echo "========================================="
 # # Evaluate unlearned model with LKF benchmark
 # HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
 #     python src/eval.py \
-#     experiment=eval/lkf/default.yaml \
+#     experiment=eval/paraphrase/default.yaml \
 #     model=$model \
 #     task_name=${prefix}${task_name} \
-#     model.model_args.pretrained_model_name_or_path=saves/unlearn/${prefix}${task_name} \
+#     model.model_args.pretrained_model_name_or_path=$(pwd)/saves/unlearn/${prefix}${task_name} \
 #     +model.tokenizer_args.padding_side=left \
-#     +eval.lkf.metrics.repetitiveness.baseline_model_path=meta-llama/$model \
-#     +eval.lkf.metrics.repetitiveness.task_name=unlearned \
-#     +eval.lkf.metrics.winrate.task_name=unlearned \
-#     paths.output_dir=saves/unlearn/${prefix}${task_name}/evals
+#     +eval.paraphrase.metrics.repetitiveness.baseline_model_path=meta-llama/$model \
+#     +eval.paraphrase.metrics.repetitiveness.task_name=unlearned \
+#     +eval.paraphrase.metrics.winrate.task_name=unlearned \
+#     paths.output_dir=$(pwd)/saves/unlearn/${prefix}${task_name}/evals
 
 ###############################
 # 3. LKF EVALUATION (PRETRAINED)
@@ -117,35 +117,39 @@ fi
 # Evaluate pretrained HF model with LKF benchmark (no winrate metric)
 # HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
 #     python src/eval.py \
-#     experiment=eval/lkf/default.yaml \
+#     experiment=eval/paraphrase/default.yaml \
 #     model=$model \
 #     task_name=pretrained_${model} \
 #     model.model_args.pretrained_model_name_or_path=$model_path \
 #     +model.tokenizer_args.padding_side=left \
-#     +eval.lkf.metrics.repetitiveness.task_name=pretrained \
-#     ~eval.lkf.metrics.winrate \
+#     +eval.paraphrase.metrics.repetitiveness.task_name=pretrained \
+#     ~eval.paraphrase.metrics.winrate \
 #     paths.output_dir=saves/eval/lkf_${model}
 HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
     python src/eval.py \
-    experiment=eval/lkf/default.yaml \
+    experiment=eval/paraphrase/default.yaml \
     model=$model \
     task_name=pretrained_${model} \
     model.model_args.pretrained_model_name_or_path=$model_path \
     +model.tokenizer_args.padding_side=left \
     paths.output_dir=saves/eval/lkf_${model}
+    # +eval.paraphrase.metrics.repetitiveness.baseline_path=saves/eval/lkf_Model/lkf_repetitiveness/pretrained.jsonl \
+    # +eval.paraphrase.metrics.winrate.baseline_path=saves/eval/lkf_Model/lkf_repetitiveness/pretrained.jsonl \
 
-# echo ""
-# echo "========================================="
-# echo "LKF Evaluation Complete!"
-# echo "Results saved to: saves/eval/lkf_${model}"
-# echo "========================================="
-# echo ""
-# echo "Summary (all results in LKF_SUMMARY.json):"
-# echo "  - Forget Quality: J_W, J_P, J_ICR metrics"
-# echo "  - Retain Quality: J_avg metric"
-# echo "  - Repetitiveness: entropy score"
-# echo "  - MMLU: accuracy"
-# echo ""
-# echo "Note: Pretrained model evaluation does NOT include win rate metric."
-# echo "      Win rate requires comparing against a baseline (unlearned vs pretrained)."
-# echo ""
+##############################
+# 4. LKF EVALUATION (UNLEARNED MODEL FROM SAVES)
+##############################
+# Evaluate an already-trained unlearned model checkpoint
+# Usage: uncomment and adjust the model path as needed
+
+# HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
+#     python src/eval.py --config-name=eval.yaml \
+#     experiment=eval/paraphrase/default \
+#     model=$model \
+#     model.model_args.pretrained_model_name_or_path=saves/unlearn/${prefix}${task_name} \
+#     +model.tokenizer_args.padding_side=left \
+#     +eval.paraphrase.metrics.repetitiveness.baseline_model_path=meta-llama/$model \
+#     +eval.paraphrase.metrics.repetitiveness.task_name=unlearned \
+#     +eval.paraphrase.metrics.winrate.task_name=unlearned \
+#     task_name=${prefix}${task_name} \
+#     paths.output_dir=saves/eval/lkf_${prefix}${task_name}

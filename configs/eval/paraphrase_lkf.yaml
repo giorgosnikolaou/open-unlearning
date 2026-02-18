@@ -1,0 +1,8 @@
+# @package eval.paraphrase
+# LKF paraphrase evaluation — extends base paraphrase config with LKF quality metrics.
+
+defaults:
+  - paraphrase_metrics:
+    - LKF/forget_quality
+    - LKF/retain_quality
+  - paraphrase

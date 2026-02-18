@@ -22,13 +22,13 @@ from evals.metrics.utility import (
     hm_aggregate,
     classifier_prob,
 )
-from evals.metrics.lkf import (
-    forget_quality_lkf,
-    retain_quality_lkf,
-    repetitiveness_lkf,
-    winrate_lkf,
-    mmlu_lkf
+from evals.metrics.paraphrase import (
+    forget_quality,
+    retain_quality,
+    repetitiveness,
+    winrate,
 )
+from evals.metrics.mmlu import mmlu
 
 METRICS_REGISTRY: Dict[str, UnlearningMetric] = {}
 
@@ -80,10 +80,10 @@ _register_metric(mia_reference)
 
 # Register Utility metrics
 _register_metric(classifier_prob)
+_register_metric(mmlu)
 
-# Register LKF metrics
-_register_metric(forget_quality_lkf)
-_register_metric(retain_quality_lkf)
-_register_metric(repetitiveness_lkf)
-_register_metric(winrate_lkf)
-_register_metric(mmlu_lkf)
+# Register Paraphrase metrics
+_register_metric(forget_quality)
+_register_metric(retain_quality)
+_register_metric(repetitiveness)
+_register_metric(winrate)

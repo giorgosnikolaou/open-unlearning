@@ -75,6 +75,112 @@ class QADataset(Dataset):
         return item
 
 
+class ParaphraseQADataset(QADataset):
+    """QADataset extended with paraphrase support for training and evaluation.
+
+    In **training mode** (``eval_mode=False``), the dataset is flattened: each
+    original sample becomes ``1 + num_train_paraphrases`` items (original
+    question plus the first *N* paraphrases), all paired with the same answer.
+
+    In **evaluation mode** (``eval_mode=True``), each item contains all
+    held-out question variants (original + paraphrases after position *N*)
+    processed via ``_process_sample``, keyed by question ID, plus raw
+    ``answer`` and ``index`` metadata.
+    """
+
+    def __init__(
+        self,
+        hf_args,
+        template_args,
+        tokenizer,
+        question_key="question",
+        answer_key="answer",
+        paraphrases_key="paraphrases",
+        num_train_paraphrases=0,
+        eval_mode=False,
+        few_shot_dataset_hf_args=None,
+        max_length=512,
+        predict_with_generate=False,
+    ):
+        super().__init__(
+            hf_args=hf_args,
+            template_args=template_args,
+            tokenizer=tokenizer,
+            question_key=question_key,
+            answer_key=answer_key,
+            few_shot_dataset_hf_args=few_shot_dataset_hf_args,
+            max_length=max_length,
+            predict_with_generate=predict_with_generate,
+        )
+        self.paraphrases_key = paraphrases_key
+        self.num_train_paraphrases = num_train_paraphrases
+        self.eval_mode = eval_mode
+        self._build_index()
+
+    def _build_index(self):
+        """Precompute flat index mapping virtual idx to (sample_idx, question_text, question_id)."""
+        self._items = []
+        for sample_idx in range(len(self.data)):
+            sample = self.data[sample_idx]
+            original_question = sample[self.question_key]
+            paraphrases = sample[self.paraphrases_key]
+
+            if not self.eval_mode:
+                # Training: original + first num_train_paraphrases
+                self._items.append((sample_idx, original_question, "question"))
+                for para_idx in range(min(self.num_train_paraphrases, len(paraphrases))):
+                    self._items.append(
+                        (sample_idx, paraphrases[para_idx], f"para_{para_idx}")
+                    )
+            else:
+                # Eval: original + held-out paraphrases
+                self._items.append((sample_idx, original_question, "question"))
+                for para_idx in range(self.num_train_paraphrases, len(paraphrases)):
+                    eval_para_idx = para_idx - self.num_train_paraphrases
+                    self._items.append(
+                        (sample_idx, paraphrases[para_idx], f"q_para_{eval_para_idx}")
+                    )
+
+        # For eval_mode, build a per-sample lookup for grouped __getitem__
+        if self.eval_mode:
+            self._sample_items = {}
+            for sample_idx, question_text, question_id in self._items:
+                self._sample_items.setdefault(sample_idx, []).append(
+                    (question_text, question_id)
+                )
+
+    def __len__(self):
+        if self.eval_mode:
+            return len(self.data)
+        return len(self._items)
+
+    def __getitem__(self, idx):
+        if not self.eval_mode:
+            # Training: return a single tokenized (question, answer) pair
+            sample_idx, question_text, _question_id = self._items[idx]
+            answer = self.data[sample_idx][self.answer_key]
+            index = self.data[sample_idx]["index"]
+            return self._process_sample(
+                question=question_text, answer=answer, index=index,
+            )
+
+        # Eval: return all question variants for sample idx
+        sample = self.data[idx]
+        answer = sample[self.answer_key]
+        index = sample["index"]
+
+        item = {}
+        for question_text, question_id in self._sample_items[idx]:
+            processed = self._process_sample(
+                question=question_text, answer=answer, index=index,
+            )
+            processed["question_text"] = question_text
+            item[question_id] = processed
+        item["answer"] = answer
+        item["index"] = index
+        return item
+
+
 class QAwithIdkDataset(QADataset):
     def __init__(self, idk_path, return_original=True, *args, **kwargs):
         self.idk_path = idk_path
