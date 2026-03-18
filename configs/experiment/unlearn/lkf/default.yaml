@@ -1,0 +1,32 @@
+# @package _global_
+# LKF (Lesser Known Facts) Unlearning Experiment
+
+defaults:
+  - override /model: Llama-3.2-3B-Instruct
+  - override /trainer: GradAscent
+  - override /data: unlearn
+  - override /data/datasets@data.forget: LKF_para_forget
+  - override /data/datasets@data.retain: LKF_retain
+  - override /eval: null
+
+model:
+  model_args:
+    pretrained_model_name_or_path: ???  # Set to your pretrained model path
+
+data:
+  anchor: forget
+  forget:
+    LKF_para_forget: {}
+  retain:
+    LKF_retain: {}
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-5
+    weight_decay: 0.01
+    num_train_epochs: 10
+    per_device_train_batch_size: 8
+    gradient_accumulation_steps: 2
+
+task_name: ???

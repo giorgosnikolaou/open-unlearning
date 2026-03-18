@@ -6,6 +6,7 @@ LKF_para_forget_eval:
       name: "qa_with_paraphrases"
       split: "forget"
     question_key: "question"
+    # answer_key: "answer_complete"
     answer_key: "answer"
     paraphrases_key: "paraphrases"
     num_train_paraphrases: 5

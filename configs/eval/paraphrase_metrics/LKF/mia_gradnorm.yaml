@@ -1,0 +1,8 @@
+# @package eval.paraphrase.metrics.mia_gradnorm
+defaults:
+  - ../../../data/datasets@datasets: LKF_MIA
+  - ../../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+
+handler: mia_gradnorm
+batch_size: 1
+p: 2

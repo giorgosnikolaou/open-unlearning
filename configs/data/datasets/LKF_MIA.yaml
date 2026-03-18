@@ -1,0 +1,24 @@
+LKF_QA_forget:
+  access_key: forget
+  handler: QADataset
+  args:
+    hf_args:
+      path: "ngiorgos/LKF"
+      name: "qa"
+      split: "forget"
+    question_key: "question"
+    # answer_key: "answer_complete"
+    answer_key: "answer"
+    max_length: 512
+LKF_QA_holdout:
+  access_key: holdout
+  handler: QADataset
+  args:
+    hf_args:
+      path: "ngiorgos/LKF"
+      name: "qa"
+      split: "holdout"
+    question_key: "question"
+    # answer_key: "answer_complete"
+    answer_key: "answer"
+    max_length: 512

@@ -1,6 +1,11 @@
 LKF_retain:
-  handler: HFDataset
+  handler: QADataset
   args:
     hf_args:
-      path: "nmndeep/LKF-retain_standard"
-      split: "train"
+      path: "ngiorgos/LKF"
+      name: "qa"
+      split: "retain"
+    question_key: "question"
+    # answer_key: "answer_complete"
+    answer_key: "answer"
+    max_length: 512

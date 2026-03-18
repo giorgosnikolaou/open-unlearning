@@ -24,13 +24,14 @@ judge:
   # model: "meta-llama/Llama-3.3-70B-Instruct"
   # quantize: True
   chunk_size: null  # null means auto (3 for forget, 5 for retain)
-  # chunk_size: 8  # null means auto (3 for forget, 5 for retain)
-  fix_qwen_keys: true  # Fix common LLM typo: 'ans_q_wen' -> 'ans_q_qwen'
-  substring_heuristic: true  # Override verdict to YES when GT ⊂ answer or answer ⊂ GT
+  fix_qwen_keys: false  # Fix common LLM typo: 'ans_q_wen' -> 'ans_q_qwen'
+  substring_heuristic: false  # Override verdict to YES when GT ⊂ answer or answer ⊂ GT
   seed: 42  # Seed for OpenAI API calls (best-effort determinism). Set to null to disable.
 
 generation:
-  max_new_tokens: 128
+  # TODO: Maybe switch back to 128
+  # max_new_tokens: 128
+  max_new_tokens: 64
   do_sample: false
   temperature: 0.0
 

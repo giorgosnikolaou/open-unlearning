@@ -2,7 +2,17 @@
 # TOFU paraphrase evaluation — extends base paraphrase config with TOFU quality metrics.
 
 defaults:
+  - paraphrase
   - paraphrase_metrics:
+    - TOFU/mia_loss
+    - TOFU/mia_min_k
+    - TOFU/mia_min_k_plus_plus
+    - TOFU/mia_zlib
+    - TOFU/mia_gradnorm
     - TOFU/forget_quality
     - TOFU/retain_quality
-  - paraphrase
+
+# TOFU-specific splits for MIA metrics
+forget_split: forget10
+holdout_split: holdout10
+question_key: "question"

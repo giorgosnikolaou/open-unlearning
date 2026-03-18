@@ -8,9 +8,26 @@ args: # HuggingFace TrainingArguments
   num_train_epochs: 5
 
 method_args:
+  alpha: 1.0
+  gamma: 1.0
+
+  forget_loss:
+    _target_: trainer.unlearn.sb.SequenceWiseNLL
+    use_softmax: false
+
+  retain_loss:
+    _target_: trainer.unlearn.sb.SequenceWiseNLL
   scorer_trainer:
-    _target_: trainer.unlearn.Scorer.ScorerTrainerGradDiff
+    # OLD scorer trainer (no regularization):
+    # _target_: trainer.unlearn.Scorer.ScorerTrainerGradDiff
+    # _partial_: true
+
+    # Scorer with regularization
+    _target_: trainer.unlearn.Scorer.ScorerTrainerRegularized
     _partial_: true
+    rho_ent: 1.0
+    rho_pop: 1.0
+    alpha_budget: 0.2
 
     cfg:
       _target_: trainer.unlearn.Scorer.ScorerConfig
@@ -23,20 +40,11 @@ method_args:
 
     optim_cfg:
       _target_: trainer.unlearn.Scorer.ScorerOptimConfig
-      lr: 1.0e-1
+      # lr: 1.0e-1
+      lr: 5.0e-2
       weight_decay: 1.0e-4
       momentum: 0.9
-
       update_every_n_steps: 10
       grad_clip: 1.0
       loss_reduction: mean
-
-  alpha: 1.0
-  gamma: 1.0
-
-  forget_loss:
-    _target_: trainer.unlearn.sb.SequenceWiseNLL
-    use_softmax: True
-  
-  retain_loss:
-    _target_: trainer.unlearn.sb.SequenceWiseNLL
+      # warmup_ratio: 0.1

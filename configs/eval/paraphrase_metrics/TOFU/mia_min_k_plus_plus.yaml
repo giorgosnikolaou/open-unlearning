@@ -1,0 +1,18 @@
+# @package eval.paraphrase.metrics.mia_min_k_plus_plus
+defaults:
+  - ../../../data/datasets@datasets: TOFU_MIA
+  - ../../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+batch_size: ${eval.paraphrase.batch_size}
+handler: mia_min_k_plus_plus
+k: 0.4
+
+datasets:
+  TOFU_QA_forget:
+    args:
+      hf_args:
+        name: ${eval.paraphrase.forget_split}_perturbed
+      question_key: ${eval.paraphrase.question_key}
+  TOFU_QA_holdout:
+    args:
+      hf_args:
+        name: ${eval.paraphrase.holdout_split}

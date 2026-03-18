@@ -68,12 +68,17 @@ class SelfBalancing(UnlearnTrainer):
             "labels": inputs["labels"],
         }
     
-    def prepare_caches(self, model: Model, *inputs: dict[str, Any]) -> tuple[Cache, ...]:
+    # def prepare_caches(self, model: Model, *inputs: dict[str, Any]) -> tuple[Cache, ...]:
+    #     return tuple(
+    #         Cache.from_forward(model, _inputs)
+    #         for _inputs in inputs
+    #     )
+
+    def prepare_caches(self, model: Model, *inputs: dict[str, Any], embed_grad: bool = False) -> tuple[Cache, ...]:
         return tuple(
-            Cache.from_forward(model, _inputs)
+            Cache.from_forward(model, _inputs, embed_grad=embed_grad)
             for _inputs in inputs
         )
-
 
 class SelfBalancingGradDiff(SelfBalancing):
     def __init__(
@@ -99,15 +104,38 @@ class SelfBalancingGradDiff(SelfBalancing):
         forget_inputs = self.pack_inputs(inputs["forget"])
         retain_inputs = self.pack_inputs(inputs["retain"])
 
-        forget_cache, retain_cache = self.prepare_caches(model, forget_inputs, retain_inputs)
+        forget_cache, retain_cache = self.prepare_caches(
+            model, 
+            forget_inputs, 
+            retain_inputs, 
+            embed_grad=self.scorer.is_update_step(self.state.global_step) or self.scorer.embed_grad
+        )
         self.scorer.step(self.state.global_step, forget_cache, retain_cache)
 
         # forget_loss, scores, mask = self.forget_loss(cache=forget_cache, scorer=self.scorer.model)
-        forget_loss, scores, mask = self.forget_loss(cache=forget_cache, scorer=self.scorer.model, invert_probabilities=True)
-        retain_loss, _, _         = self.retain_loss(cache=retain_cache, uniform_scores=True)
-        loss = self.alpha * retain_loss - self.gamma * forget_loss        
-
-        self.forget_loss._log_scores(scores, mask)
+        # forget_loss, scores, mask = self.forget_loss(
+        #     cache=forget_cache, 
+        #     scorer=self.scorer.model, 
+        #     skip_softmax=True,
+        #     scorer_input=forget_cache.gradients
+        # )
+        forget_loss, scores, mask = self.forget_loss(
+            cache=forget_cache, 
+            scorer=self.scorer.model, 
+            skip_softmax=True,
+            scorer_input=forget_cache.gradients,
+            # beta=1.0,
+            beta=5.0,
+        )
+        forget_loss = -forget_loss
+        # retain_loss, _, _ = self.retain_loss(
+        #     cache=retain_cache, 
+        #     scorer=None,
+        #     # uniform_scores=True
+        #     uniform_scores=False
+        # )
+        retain_loss: torch.Tensor = retain_cache.outputs.loss # type: ignore
+        loss = self.alpha * retain_loss + self.gamma * forget_loss
 
         return (loss, forget_cache.outputs) if return_outputs else loss
 
@@ -192,5 +220,3 @@ class SelfBalancingDPO(SelfBalancingGradDiff):
         return (loss, forget_cache.outputs) if return_outputs else loss
 
 
-
-    

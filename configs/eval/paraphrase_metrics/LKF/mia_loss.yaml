@@ -1,0 +1,6 @@
+# @package eval.paraphrase.metrics.mia_loss
+defaults:
+  - ../../../data/datasets@datasets: LKF_MIA
+  - ../../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+batch_size: ${eval.paraphrase.batch_size}
+handler: mia_loss

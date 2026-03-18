@@ -321,7 +321,7 @@ class WinrateJudge:
                 f"for unlearn-model against {self.name}"
             )
 
-            for i, pair in enumerate(tqdm(data_pairs)):
+            for i, pair in enumerate(pbar := tqdm(data_pairs, desc="Winrate")):
                 question = pair["question"]
                 answer_1 = pair["answer_1"]
                 answer_2 = pair["answer_2"]
@@ -360,6 +360,9 @@ class WinrateJudge:
                     "score_assistant_2": score_assistant_2,
                     "explanation": explanation
                 })
+
+                wr, cts = self.calculate_win_rate(evaluation_results)
+                pbar.set_postfix(wr=f"{wr:.3f}", W=cts["wins"], L=cts["losses"], T=cts["ties"])
 
             win_rate, counts = self.calculate_win_rate(evaluation_results)
 

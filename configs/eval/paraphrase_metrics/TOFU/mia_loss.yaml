@@ -1,0 +1,17 @@
+# @package eval.paraphrase.metrics.mia_loss
+defaults:
+  - ../../../data/datasets@datasets: TOFU_MIA
+  - ../../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+batch_size: ${eval.paraphrase.batch_size}
+handler: mia_loss
+
+datasets:
+  TOFU_QA_forget:
+    args:
+      hf_args:
+        name: ${eval.paraphrase.forget_split}_perturbed
+      question_key: ${eval.paraphrase.question_key}
+  TOFU_QA_holdout:
+    args:
+      hf_args:
+        name: ${eval.paraphrase.holdout_split}

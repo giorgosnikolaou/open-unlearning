@@ -1,8 +1,12 @@
-import torch
 import random
+from typing import Any
+
 import numpy as np
-from torch import nn
+import torch
 import torch.nn.functional as F
+from torch import nn
+from transformers import PreTrainedModel
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
 def seed_everything(seed=42):
@@ -132,3 +136,124 @@ def compute_satimp_loss(model, inputs, beta1, beta2):
         shift_labels.view(-1) != -100
     ].mean()
     return forget_loss, outputs
+
+
+
+
+################
+# JensUn Utils #
+################
+
+def compute_js_avg(model, inputs):
+    # get the sum loss for each sequence in a batch
+    # NOTE: not same as model(**inputs).loss but has sum loss for each seq in a batch
+
+    # Compute probabilities from logits
+    outputs = model(**inputs)
+    logits = outputs.logits
+    probs = F.softmax(logits, dim=-1)
+        
+    # Define the uniform distribution over the vocabulary
+    uniform_dist = torch.full_like(probs, 1.0 / probs.size(-1))
+
+    # Compute the midpoint distribution
+    m = 0.5 * (probs + uniform_dist)
+
+    # Compute KL divergence (adding a small value to avoid log(0))
+    kl_p_m = F.kl_div(m.log(), probs, reduction='batchmean')
+    kl_q_m = F.kl_div(m.log(), uniform_dist, reduction='batchmean')
+
+    # Compute final JS Divergence
+    js_div = 0.5 * (kl_p_m + kl_q_m)
+
+    return js_div, outputs
+
+
+
+def jensun_retain_loss(
+    model: PreTrainedModel, 
+    target_model: PreTrainedModel, 
+    inputs: dict[str, Any]
+):
+    with torch.no_grad():
+        ref_outputs: CausalLMOutputWithPast = target_model(**inputs)
+
+    ref_logits = ref_outputs.logits
+    epsilon = 1e-9
+    ref_probs = F.softmax(ref_logits, dim=-1)
+
+    outputs: CausalLMOutputWithPast = model(**inputs)
+    logits = outputs.logits
+    current_probs = F.softmax(logits, dim=-1)
+
+    # Compute the midpoint distribution
+    m = 0.5 * (ref_probs + current_probs)
+    m = torch.clamp(m, min=epsilon)  # Added this line
+
+    # Clamp input distributions as well to avoid log(0)
+    ref_probs = torch.clamp(ref_probs, min=epsilon)
+    current_probs = torch.clamp(current_probs, min=epsilon)
+
+    # Compute KL divergences manually (P‖M and Q‖M)
+    kl_p_m = torch.sum(ref_probs * (torch.log(ref_probs) - torch.log(m)), dim=-1).mean()
+    kl_q_m = torch.sum(current_probs * (torch.log(current_probs) - torch.log(m)), dim=-1).mean()
+
+    # Compute final JS Divergence
+    js_div = 0.5 * (kl_p_m + kl_q_m)
+
+    return js_div, outputs
+
+
+def compute_uniform_ce_avg(model: PreTrainedModel, inputs: dict[str, Any]) -> tuple[torch.Tensor, CausalLMOutputWithPast]:
+    # Forward pass to get logits
+    outputs: CausalLMOutputWithPast = model(**inputs)
+    logits = outputs.logits
+
+    # Compute log probabilities from logits
+    log_probs = F.log_softmax(logits, dim=-1)
+
+    # Define the uniform target distribution over the vocabulary
+    vocab_size = logits.size(-1)
+    uniform_dist = torch.full_like(log_probs, 1.0 / vocab_size)
+
+    # Compute cross-entropy loss: CE(target, log_probs)
+    ce_loss = -(uniform_dist * log_probs).sum(dim=-1)  # sum over vocab
+    ce_loss = ce_loss.mean()  # average over batch and sequence if needed
+
+    return ce_loss, outputs
+
+
+def jensun_multitok_loss(
+    model: PreTrainedModel, 
+    forget_inputs: dict[str, Any], 
+    target_tokens: list[int] = [2822, 4623]
+) -> tuple[torch.Tensor, CausalLMOutputWithPast]:
+    outputs: CausalLMOutputWithPast = model(**forget_inputs)
+    logits = outputs.logits
+    epsilon = 1e-9
+
+    probs = F.softmax(logits, dim=-1)
+    peaked_dist = torch.zeros_like(probs)
+
+    seq_len = logits.shape[1]
+    expected_tokens = torch.tensor(target_tokens).repeat(seq_len // len(target_tokens) + 1)[:seq_len]
+
+    # TODO: This should be `peaked_dist[..., expected_tokens] = 1.0 / len(target_tokens)`
+    # Right now, the vector is has a probability mass equal with len(target_tokens).
+    peaked_dist[..., expected_tokens] = 1.0  # Set probability 1.0 at resp tokens
+
+    # Midpoint distribution
+    m = 0.5 * (probs + peaked_dist)
+    m = torch.clamp(m, min=epsilon)  # Ensure no zeros
+
+    # Clamp input distributions as well to avoid log(0)
+    probs = torch.clamp(probs, min=epsilon)
+    peaked_dist = torch.clamp(peaked_dist, min=epsilon)
+
+    # Compute KL divergences manually (P || M and Q || M)
+    kl_p_m = torch.sum(probs * (torch.log(probs) - torch.log(m)), dim=-1)
+    kl_q_m = torch.sum(peaked_dist * (torch.log(peaked_dist) - torch.log(m)), dim=-1)
+    
+    js_div = 0.5 * (kl_p_m.mean() + kl_q_m.mean())
+
+    return js_div, outputs

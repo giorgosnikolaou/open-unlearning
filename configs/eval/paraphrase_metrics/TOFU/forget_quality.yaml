@@ -9,6 +9,7 @@ output_dir: ${paths.output_dir}/paraphrase_forget
 eval_task: forget
 
 max_samples: 100
+# max_samples: 10
 
 # In-context retention (ICR) dataset — retain examples used as few-shot
 # prompts when evaluating forget quality. Must have 'question' and 'answer' columns.

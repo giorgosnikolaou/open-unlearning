@@ -2,7 +2,12 @@
 # LKF paraphrase evaluation — extends base paraphrase config with LKF quality metrics.
 
 defaults:
+  - paraphrase
   - paraphrase_metrics:
+    - LKF/mia_loss
+    - LKF/mia_min_k
+    - LKF/mia_min_k_plus_plus
+    - LKF/mia_zlib
+    - LKF/mia_gradnorm
     - LKF/forget_quality
     - LKF/retain_quality
-  - paraphrase

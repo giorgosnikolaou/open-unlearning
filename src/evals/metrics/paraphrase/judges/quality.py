@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import create_model
+from tqdm import tqdm
 
 from evals.metrics.paraphrase.judges.local import LocalJudge
 from evals.metrics.paraphrase.utils import get_api_key, setup_logger
@@ -270,7 +271,13 @@ class QualityJudge:
                 response_text = response_text.split("```")[1].split("```")[0].strip()
 
             parsed = json.loads(response_text)
-            if isinstance(parsed, list) and len(parsed) <= num_samples:
+            if isinstance(parsed, list) and len(parsed) >= num_samples:
+                if len(parsed) > num_samples:
+                    self.logger.warning(
+                        f"Judge returned {len(parsed)} items, expected {num_samples}. "
+                        f"Truncating to first {num_samples}."
+                    )
+                    parsed = parsed[:num_samples]
                 if self.fix_qwen_keys:
                     parsed = self._fix_qwen_keys_in_responses(parsed)
                 return parsed
@@ -311,10 +318,20 @@ class QualityJudge:
         answer_fields = {f"ans_{q}": (str, ...) for q in self.questions}
         response_schema_type = create_model("DynamicJudgeResponse", **answer_fields) # type: ignore
 
-        for i in range(0, len(alternate_json), self.chunk_size):
+        # Determine score label for tqdm postfix
+        if self.task == 'forget':
+            score_label = "J_ICR" if self.icr_data else "J_P"
+        else:
+            score_label = "J_avg"
+
+        pbar = tqdm(
+            range(0, len(alternate_json), self.chunk_size),
+            desc=f"Judging {self.task} (ICR={self.icr_data})",
+        )
+        for i in pbar:
             chunk = alternate_json[i:i + self.chunk_size]
             chunk_num = i // self.chunk_size + 1
-            total_chunks = len(alternate_json) // self.chunk_size + 1
+            total_chunks = (len(alternate_json) + self.chunk_size - 1) // self.chunk_size
 
             if chunk_num == 1 and chunk:
                 answer_fields_list = [k for k in chunk[0].keys() if k.startswith('ans_')]
@@ -505,6 +522,30 @@ class QualityJudge:
                     )
 
                 self.formatted_response.extend(formatted_response_chunk)
+
+                # Update running score in tqdm postfix
+                if self.task == 'forget':
+                    # Coverage: fraction of samples with at least one YES
+                    n_covered = sum(
+                        1 for resp in self.formatted_response
+                        if any(
+                            resp[k].upper() == "YES"
+                            for k in resp if k.startswith("ans_")
+                        )
+                    )
+                    score = n_covered / len(self.formatted_response)
+                else:
+                    # Average: mean YES rate across all answer fields
+                    total_yes = sum(
+                        1 for resp in self.formatted_response
+                        for k in resp if k.startswith("ans_") and resp[k].upper() == "YES"
+                    )
+                    total_fields = sum(
+                        1 for resp in self.formatted_response
+                        for k in resp if k.startswith("ans_")
+                    )
+                    score = total_yes / total_fields if total_fields else 0.0
+                pbar.set_postfix(**{score_label: f"{score:.3f}"})
 
         self.logger.info(f"LKF {self.judge_type} judge evals done for {self.task} set - iCR {self.icr_data}")
         self.save_logs()

@@ -115,6 +115,13 @@ def repetitiveness(model, **kwargs) -> Dict[str, Any]:
     """
     tokenizer = kwargs["tokenizer"]
     template_args = kwargs["template_args"]
+    # Allow metric-level system prompt override (e.g. to use original prompt
+    # when the global one was overridden for training/other evals)
+    system_prompt_override = kwargs.get("system_prompt")
+    if system_prompt_override is not None:
+        from copy import deepcopy
+        template_args = deepcopy(template_args)
+        template_args["system_prompt"] = system_prompt_override
     data = kwargs["data"]
     batch_size: int = kwargs.get("batch_size", 1)
     num_samples: int = kwargs.get("num_samples", 1000)

@@ -10,6 +10,7 @@ eval_task: retain
 
 # Metric-specific settings
 max_samples: 450
+# max_samples: 10
 
 # Inherit shared settings from parent
 judge: ${eval.paraphrase.judge}
