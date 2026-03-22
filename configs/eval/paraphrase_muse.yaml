@@ -1,0 +1,13 @@
+# @package eval.paraphrase
+# MUSE paraphrase evaluation — extends base paraphrase config with MUSE quality metrics.
+
+defaults:
+  - paraphrase
+  - paraphrase_metrics:
+    - MUSE/mia_loss
+    - MUSE/mia_min_k
+    - MUSE/mia_min_k_plus_plus
+    - MUSE/mia_zlib
+    - MUSE/mia_gradnorm
+    - MUSE/forget_quality
+    - MUSE/retain_quality

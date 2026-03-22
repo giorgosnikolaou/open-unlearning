@@ -7,7 +7,8 @@ import torch.nn.functional as F
 from torch import nn
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
-
+from scorers import TokenImportanceScorer
+from data.Cache import Cache
 
 def seed_everything(seed=42):
     random.seed(seed)
@@ -138,6 +139,26 @@ def compute_satimp_loss(model, inputs, beta1, beta2):
     return forget_loss, outputs
 
 
+def compute_satimp_loss_custom(model, inputs, beta1, beta2):
+    outputs = model(**inputs)
+    labels = inputs["labels"]
+    labels = labels.to(outputs.logits.device)
+
+    shift_logits = outputs.logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+
+    lm_loss = nn.CrossEntropyLoss(ignore_index=-100, reduction="none")(
+        shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+    )
+    weight_imp = (1 - (-lm_loss).exp().detach()) ** beta2
+    lm_loss = weight_imp * lm_loss
+    weight_sat = ((-lm_loss).exp().detach()) ** beta1
+    forget_loss = - (weight_sat * lm_loss)[
+        shift_labels.view(-1) != -100
+    ].mean()
+    return forget_loss, outputs
+
+
 
 
 ################
@@ -257,3 +278,96 @@ def jensun_multitok_loss(
     js_div = 0.5 * (kl_p_m.mean() + kl_q_m.mean())
 
     return js_div, outputs
+
+
+
+##################
+# Self Balancing #
+##################
+
+def reweighted_NLL(
+    cache: Cache, 
+    scorer: TokenImportanceScorer,
+    scorer_requires_grad: bool = False,
+
+    invert_probabilities: bool = False,
+    normalize_token_loss: bool = False,
+
+    beta: float | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:        
+
+    scorer_ctx = torch.enable_grad() if scorer_requires_grad else torch.no_grad()
+    with scorer_ctx:
+        scores, mask = scorer.score(cache)
+
+        if invert_probabilities:
+            scores = torch.where(mask, 1 - scores, 0)
+
+    token_loss = cache.token_loss.detach() if scorer_requires_grad else cache.token_loss
+
+
+    if normalize_token_loss:
+        token_loss = F.normalize(token_loss, p=1, dim=-1)
+
+    token_loss = token_loss * scores
+    saturation = torch.ones_like(scores) if beta is None else (-token_loss).exp().detach() ** beta
+    token_loss = token_loss * saturation
+    weighted_loss = token_loss[mask].mean()
+
+    # saturation = torch.ones_like(scores) if beta is None else (-token_loss).exp().detach() ** beta
+    # weighted_loss = (
+    #     token_loss *
+    #     saturation *
+    #     scores
+    # )[mask].mean()
+
+    # Revert inverted scores before returning
+    if invert_probabilities:
+        scores = torch.where(mask, 1 - scores, 0)
+
+    return weighted_loss, scores, mask
+
+
+def reweighted_softmax_NLL(
+    cache: Cache, 
+    scorer: TokenImportanceScorer,
+    scorer_requires_grad: bool = False,
+
+    invert_probabilities: bool = False,
+    normalize_token_loss: bool = False,
+
+    beta: float | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:        
+
+    scorer_ctx = torch.enable_grad() if scorer_requires_grad else torch.no_grad()
+    with scorer_ctx:
+        scores, mask = scorer.score(cache)
+
+        scores_to_use = torch.where(mask, 1 - scores, 0) if invert_probabilities else scores.clone()
+
+        scores_to_use = F.softmax(
+            scores_to_use.masked_fill(~mask, -float('inf')), 
+            dim=-1
+        ).masked_fill(~mask, 0)
+        
+
+    token_loss = cache.token_loss.detach() if scorer_requires_grad else cache.token_loss
+
+    if normalize_token_loss:
+        token_loss = F.normalize(token_loss, p=1, dim=-1)
+
+    token_loss = token_loss * scores_to_use
+    saturation = torch.ones_like(scores) if beta is None else (-token_loss).exp().detach() ** beta
+    token_loss = token_loss * saturation
+    weighted_loss = token_loss[mask].mean()
+
+    # saturation = torch.ones_like(scores) if beta is None else (-token_loss).exp().detach() ** beta
+    # weighted_loss = (
+    #     token_loss *
+    #     saturation *
+    #     scores
+    # )[mask].mean()
+
+    return weighted_loss, scores, scores_to_use, mask
+
+

@@ -21,7 +21,7 @@ from trainer.unlearn.npo import NPO
 from trainer.unlearn.pdu import PDU
 from trainer.unlearn.rmu import RMU
 from trainer.unlearn.satimp import SatImp
-from trainer.unlearn.sb import *
+from trainer.unlearn.sb import SelfBalancingGradDiff
 from trainer.unlearn.simnpo import SimNPO
 from trainer.unlearn.undial import UNDIAL
 from trainer.unlearn.wga import WGA
@@ -116,5 +116,3 @@ _register_trainer(JensUnWhiteSpace)
 
 # Self Balancing
 _register_trainer(SelfBalancingGradDiff)
-_register_trainer(SelfBalancingNPO)
-_register_trainer(SelfBalancingDPO)

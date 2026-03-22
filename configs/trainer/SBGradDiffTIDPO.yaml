@@ -1,0 +1,22 @@
+defaults:
+  - finetune
+
+handler: SelfBalancingGradDiff
+
+args:
+  learning_rate: 1e-5
+  num_train_epochs: 5
+
+method_args:
+  alpha: 1.0
+  gamma: 1.0
+
+  scorer:
+    _target_: scorers.TIDPOScorer
+    lam: 0.5
+    prior_mean: 2.0
+    prior_std: 4.0
+
+  scorer_trainer:
+    _target_: trainer.unlearn.Scorer.NoOpScorerTrainer
+    _partial_: true

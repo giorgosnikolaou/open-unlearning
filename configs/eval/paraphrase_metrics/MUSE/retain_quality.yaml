@@ -1,0 +1,20 @@
+# @package eval.paraphrase.metrics.retain_quality
+defaults:
+  - ../../../data/datasets@datasets: MUSE_para_retain_eval
+
+handler: retain_quality
+output_dir: ${paths.output_dir}/paraphrase_retain
+
+# Task identifier
+eval_task: retain
+
+# Metric-specific settings
+max_samples: 450
+
+# System prompt prepended to model input for succinct answers (matching MUSE GT format)
+system_prompt: "Answer the following question succinctly in a few words."
+
+# Inherit shared settings from parent
+judge: ${eval.paraphrase.judge}
+generation: ${eval.paraphrase.generation}
+output_base: ${eval.paraphrase.output}

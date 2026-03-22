@@ -8,5 +8,5 @@ TOFU_para_forget:
     question_key: "question"
     answer_key: "answer"
     paraphrases_key: "paraphrases"
-    num_train_paraphrases: 5
+    num_train_paraphrases: 0
     max_length: 512

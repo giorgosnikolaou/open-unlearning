@@ -50,6 +50,17 @@ class UnlearningMetric:
     def load_logs_from_file(self, file):
         """Load a logs file, assumes json"""
         logs = {}
+        if os.path.isdir(file):
+            json_files = [f for f in os.listdir(file) if f.endswith("_EVAL.json")]
+            if len(json_files) == 1:
+                file = os.path.join(file, json_files[0])
+            elif len(json_files) > 1:
+                raise ValueError(
+                    f"Multiple *_EVAL.json files found in {file}: {json_files}. "
+                    "Please specify the full file path."
+                )
+            else:
+                raise ValueError(f"No *_EVAL.json files found in directory {file}")
         if os.path.exists(file):
             logger.info(f"Loading evaluations from {file}")
             with open(file, "r") as f:

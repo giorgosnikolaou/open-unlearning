@@ -26,7 +26,7 @@ per_device_train_batch_size=16
 gradient_accumulation_steps=2
 
 # Output directory for all SatImp sweep runs
-sweep_dir="saves/unlearn/SatImp_sweep"
+sweep_dir="saves/unlearn/SatImp_Sat_sweep"
 
 # Sweep grid
 beta1_values=(1.0 5.0 10.0)

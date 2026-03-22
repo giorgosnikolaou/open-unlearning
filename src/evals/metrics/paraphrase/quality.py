@@ -30,6 +30,7 @@ def _generate_responses(
     generation_cfg: Dict[str, Any],
     icr: bool,
     icr_dataset=None,
+    system_prompt: Optional[str] = None,
 ) -> List[Dict[str, str]]:
     """Generate model responses for all question variants in the dataset.
 
@@ -45,6 +46,9 @@ def _generate_responses(
         generation_cfg: Generation configuration dict.
         icr: Whether to use in-context retention examples.
         icr_dataset: Loaded ICR dataset (required when icr=True).
+        system_prompt: Optional system prompt to prepend to model input.
+            For chat models (apply_chat_template=True), injected as system role.
+            For base models, prepended as a plain text prefix.
 
     Returns:
         List of dicts, one per sample, mapping ``ans_<qid>`` to generated response.
@@ -52,6 +56,18 @@ def _generate_responses(
     max_new_tokens = generation_cfg.get("max_new_tokens", 128)
     do_sample = generation_cfg.get("do_sample", False)
     temperature = generation_cfg.get("temperature", 0.0)
+
+    # Build template_args with optional system prompt override
+    template_args = data.template_args
+    if system_prompt:
+        from omegaconf import OmegaConf
+        template_args = OmegaConf.to_container(template_args, resolve=True)
+        if template_args.get("apply_chat_template"):
+            template_args["system_prompt"] = system_prompt
+        else:
+            template_args["system_prompt_with_special_tokens"] = (
+                system_prompt + "\n"
+            )
 
     num_samples = min(len(data), max_samples)
     logs: List[Dict[str, str]] = []
@@ -81,9 +97,22 @@ def _generate_responses(
                 response_msgs = [ex["answer"] for ex in icr_examples] + [""]
                 tokenized = preprocess_chat_instance(
                     tokenizer,
-                    data.template_args,
+                    template_args,
                     prompt_msgs,
                     response_msgs,
+                    data.max_length,
+                    predict_with_generate=True,
+                )
+                all_input_ids.append(tokenized["input_ids"])
+                all_attention_masks.append(tokenized["attention_mask"])
+            elif system_prompt:
+                # Re-tokenize with system prompt since pre-tokenized
+                # input_ids don't include it
+                tokenized = preprocess_chat_instance(
+                    tokenizer,
+                    template_args,
+                    [item["question_text"]],
+                    [""],
                     data.max_length,
                     predict_with_generate=True,
                 )
@@ -121,13 +150,15 @@ def _generate_responses(
                 eos_token_id=tokenizer.eos_token_id,
             )
 
+        print(tokenizer.decode(tokenized["input_ids"]))
         # Decode only the newly generated tokens for each variant
         for i, qid in enumerate(qids):
             generated_ids = outputs[i, max_len:]
             response = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
             result_dict[f"ans_{qid}"] = response
-
+            print(response, end='\n' + '-' * 100 + '\n')
         logs.append(result_dict)
+        exit(0)
 
     return logs
 
@@ -162,6 +193,7 @@ def _evaluate_quality(
     judge_cfg: Dict[str, Any] = kwargs.get("judge", {})
     generation_cfg: Dict[str, Any] = kwargs.get("generation", {})
     output_base_cfg: Dict[str, str] = kwargs.get("output_base", {})
+    system_prompt: Optional[str] = kwargs.get("system_prompt")
 
     # Judge configuration
     judge_type: str = judge_cfg.get("type", "local")
@@ -231,6 +263,7 @@ def _evaluate_quality(
                 generation_cfg=generation_cfg,
                 icr=icr,
                 icr_dataset=icr_dataset,
+                system_prompt=system_prompt,
             )
             evaluator.logs = logs
             evaluator.save_logs()

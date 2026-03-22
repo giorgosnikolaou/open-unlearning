@@ -23,11 +23,18 @@ method_args:
     # _partial_: true
 
     # Scorer with regularization
-    _target_: trainer.unlearn.Scorer.ScorerTrainerRegularized
+    # _target_: trainer.unlearn.Scorer.ScorerTrainerRegularized
+    # _partial_: true
+    # rho_ent: 1.0
+    # rho_pop: 1.0
+    # alpha_budget: 0.2
+
+    _target_: trainer.unlearn.Scorer.ScorerTrainerRegularizedL2
     _partial_: true
     rho_ent: 1.0
     rho_pop: 1.0
     alpha_budget: 0.2
+    rho_l2: 0.01
 
     cfg:
       _target_: trainer.unlearn.Scorer.ScorerConfig
@@ -37,6 +44,7 @@ method_args:
       scale_factor: 1.0
       use_sigmoid: true
       zero_init: true
+      use_bias: true
 
     optim_cfg:
       _target_: trainer.unlearn.Scorer.ScorerOptimConfig

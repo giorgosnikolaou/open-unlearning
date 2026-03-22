@@ -9,6 +9,7 @@ source /tmlscratch/nikolaou/open-unlearning/envs/.open-unlearning/bin/activate
 
 model="Llama-3.2-1B-Instruct"
 best_run="saves/unlearn/SatImp_sweep/SATIMP_tofu_${model}_forget10_beta15.0_beta20.5"
+best_run="saves/unlearn/SatImp_Sat_sweep/SATIMP_tofu_${model}_forget10_beta15.0_beta20.5"
 
 echo ""
 echo "=========================================================="
