@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import copy
+import logging
 import math
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 import torch
 from torch import nn
+from torch.optim import SGD
 from transformers import PreTrainedModel
 
 from data.Cache import Cache
@@ -15,7 +18,16 @@ from trainer.unlearn.base import UnlearnTrainer
 from trainer.unlearn.Scorer import *
 from trainer.utils import reweighted_NLL
 
+logger = logging.getLogger(__name__)
+
 Model = PreTrainedModel
+
+
+@dataclass
+class ScorerPretrainConfig:
+    epochs: int = 0
+    lr: float = 0.05
+    freeze_after: bool = False
 
 
 class SelfBalancing(UnlearnTrainer):
@@ -23,12 +35,15 @@ class SelfBalancing(UnlearnTrainer):
         self,
         scorer: TokenImportanceScorer,
         scorer_trainer: Callable[..., Any],
+        scorer_pretrain: ScorerPretrainConfig | None = None,
         *args,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
 
         self.scorer = scorer
+        self.scorer_pretrain_cfg = scorer_pretrain or ScorerPretrainConfig()
+        self._freeze_scorer = False
 
         self.scorer_trainer = scorer_trainer(
             scorer=self.scorer,
@@ -73,18 +88,84 @@ class SelfBalancing(UnlearnTrainer):
             for _inputs in inputs
         )
 
+    def train(self, **kwargs):
+        if self.scorer_pretrain_cfg.epochs > 0:
+            self._pretrain_scorer()
+        if self.scorer_pretrain_cfg.freeze_after:
+            self.scorer.requires_grad_(False)
+            self._freeze_scorer = True
+        return super().train(**kwargs)
+
+    @torch.no_grad()
+    def _pretrain_scorer(self):
+        cfg = self.scorer_pretrain_cfg
+        logger.info(
+            "Pretraining scorer for %d epoch(s) (lr=%s, freeze_after=%s)",
+            cfg.epochs, cfg.lr, cfg.freeze_after,
+        )
+
+        # Freeze model — no model gradients needed
+        was_training = self.model.training
+        self.model.eval()
+        for p in self.model.parameters():
+            p.requires_grad_(False)
+
+        pretrain_opt = SGD(
+            self.scorer.parameters(),
+            lr=cfg.lr,
+            momentum=0.9,
+            weight_decay=1e-4,
+        )
+
+        dataloader = self.get_train_dataloader()
+
+        for epoch in range(cfg.epochs):
+            for step, inputs in enumerate(dataloader):
+                inputs = self._prepare_inputs(inputs)
+                forget_inputs = self.pack_inputs(inputs["forget"])
+                retain_inputs = self.pack_inputs(inputs["retain"])
+
+                forget_cache, retain_cache = self.prepare_caches(
+                    self.model, forget_inputs, retain_inputs
+                )
+
+                # Enable grad only for scorer params
+                with torch.enable_grad():
+                    self.scorer.requires_grad_(True)
+                    loss = self.scorer_trainer.compute_loss(forget_cache, retain_cache)
+                    loss.backward()
+                    self.scorer.requires_grad_(False)
+
+                if self.scorer_trainer.optim_cfg.grad_clip is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.scorer.parameters(),
+                        self.scorer_trainer.optim_cfg.grad_clip,
+                    )
+                pretrain_opt.step()
+                pretrain_opt.zero_grad(set_to_none=True)
+
+            logger.info("Scorer pretrain epoch %d/%d complete", epoch + 1, cfg.epochs)
+
+        # Restore model
+        for p in self.model.parameters():
+            p.requires_grad_(True)
+        if was_training:
+            self.model.train()
+
 class SelfBalancingGradDiff(SelfBalancing):
     def __init__(
-        self, *, 
+        self, *,
 
         alpha: float,
         gamma: float,
+        beta: float = 5.0,
 
         **kwargs
     ):
         super().__init__(**kwargs)
         self.gamma = gamma
         self.alpha = alpha
+        self.beta = beta
         
     def compute_loss(self, model, inputs, return_outputs=False):
         forget_inputs = self.pack_inputs(inputs["forget"])
@@ -92,15 +173,13 @@ class SelfBalancingGradDiff(SelfBalancing):
 
         forget_cache, retain_cache = self.prepare_caches(model, forget_inputs, retain_inputs)
 
-        self.scorer_trainer.step(self.state.global_step, forget_cache, retain_cache)
-
-        # scorer.step may backward through the model graph as a side effect -- clear those gradients
-        # self.optimizer.zero_grad()
+        if not self._freeze_scorer:
+            self.scorer_trainer.step(self.state.global_step, forget_cache, retain_cache)
 
         forget_loss, scores, mask = reweighted_NLL(
-            cache=forget_cache, 
-            scorer=self.scorer, 
-            beta=5.0,
+            cache=forget_cache,
+            scorer=self.scorer,
+            beta=self.beta,
         )
         forget_loss = -forget_loss
 

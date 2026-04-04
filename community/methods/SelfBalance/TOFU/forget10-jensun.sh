@@ -1,5 +1,5 @@
 #!/bin/bash
-# SelfBalancing GradDiff + LearnedScorer — TOFU Paraphrase Train & Eval
+# JensUn — TOFU Paraphrase Train & Eval
 
 set -a
 source .env
@@ -9,56 +9,29 @@ source /tmlscratch/nikolaou/open-unlearning/envs/.open-unlearning/bin/activate
 
 export MASTER_PORT=$(python -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")
 
-declare -A HIDDEN_DIM_MAP=(
-    ["Llama-2-7b-chat-hf"]=4096
-    ["Llama-3.2-1B-Instruct"]=2048
-    ["Llama-3.2-3B-Instruct"]=3072
-    ["Llama-3.1-8B-Instruct"]=4096
-)
-
 model="Llama-3.2-1B-Instruct"
 # model="Llama-2-7b-chat-hf"
-trainer="SBGradDiffLearned"
+trainer="JensUn"
 experiment="unlearn/tofu/default.yaml"
-scorer_in_dim=${HIDDEN_DIM_MAP[$model]}
 
 per_device_train_batch_size=16
 gradient_accumulation_steps=2
 
-lr=1e-5
-gamma=5.0
+lr=4e-5
+gamma=0.5
 alpha=0.5
-
-
-lambda_entropy=1.0
-lambda_population=10.0
-budget=0.2
-lambda_l2=0.1
-
-
-lambda_entropy=1.0
-lambda_population=10.0
-budget=0.2
-lambda_l2=1.0
-
-update_every_n_steps=5
+retain_loss_type="JensUn"
 
 task_name="tofu_${model}_${trainer}_lr${lr}_gamma${gamma}_alpha${alpha}"
-params="ent${lambda_entropy}_pop${lambda_population}_budget${budget}_l2${lambda_l2}_up${update_every_n_steps}"
-prefix="Learned/HiddenPlusOne_OldSat_"
-prefix="Learned/Detach_"
-prefix="LearnedLlama2/"
-prefix="Learned/Reproducibility_"
-prefix="Learned/CorrectAccum_"
-prefix="Learned/ForgetOnlyScorer_beta5_"
+prefix="JensUn/"
 
-complete_name="${prefix}${params}_${task_name}"
+complete_name="${prefix}${task_name}"
 
 ###################
 # 1. UNLEARNING
 ###################
 echo "==========================================="
-echo " LearnedScorer — ${complete_name}"
+echo " JensUn — ${complete_name}"
 echo "==========================================="
 
 HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
@@ -78,13 +51,7 @@ HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
     trainer.args.learning_rate=$lr \
     trainer.method_args.gamma=$gamma \
     trainer.method_args.alpha=$alpha \
-    trainer.method_args.scorer.cfg.input_dimension=$scorer_in_dim \
-    trainer.method_args.scorer_trainer.optim_cfg.update_every_n_steps=$update_every_n_steps \
-    +trainer.method_args.scorer_trainer.optim_cfg.scheduler=linear \
-    trainer.method_args.scorer_trainer.lambda_entropy=$lambda_entropy \
-    trainer.method_args.scorer_trainer.lambda_population=$lambda_population \
-    trainer.method_args.scorer_trainer.budget=$budget \
-    trainer.method_args.scorer_trainer.lambda_l2=$lambda_l2
+    trainer.method_args.retain_loss_type=$retain_loss_type
 
 ########################################
 # 2. TOFU EVALUATION (UNLEARNED)
@@ -127,7 +94,3 @@ HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
     ++model.model_args.device_map='auto' \
     +eval.paraphrase.metrics.winrate.baseline_path=saves/eval/ES_Llama-3.2-1B-Instruct_retain90/paraphrase_evals/repetitiveness/model.jsonl \
     paths.output_dir=$(pwd)/saves/unlearn/${complete_name}/evals/paraphrase_evals
-    # paths.output_dir=$(pwd)/saves/unlearn/${complete_name}/evals
-    # '~eval.paraphrase.metrics.winrate' \
-    # '~eval.paraphrase.metrics.repetitiveness' \
-    # +eval.paraphrase.metrics.winrate.baseline_path=saves/eval/tofu_para_${model}/repetitiveness/model.jsonl \

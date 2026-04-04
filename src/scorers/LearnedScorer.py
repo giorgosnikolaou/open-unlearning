@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from pydantic import BaseModel, ConfigDict, Field
 from torch import nn
 from transformers import PreTrainedModel
@@ -28,6 +29,7 @@ class ScorerConfig(BaseModel):
     use_sigmoid: bool = True
     zero_init: bool = True
     use_bias: bool = True
+    normalize_hidden: bool = False
 
 class Scorer(nn.Sequential):
     def __init__(self, cfg: ScorerConfig):
@@ -58,8 +60,10 @@ class Scorer(nn.Sequential):
         # Initialize Sequential with the built modules
         super().__init__(*modules)
 
+        self.dtype = next(self.parameters()).dtype
+
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return super().forward(input).squeeze(-1)
+        return super().forward(input.to(self.dtype)).squeeze(-1)
 
 class LearnedScorer(TokenImportanceScorer[SampleCacheWithHidden]):
     cache_cls = SampleCacheWithHidden
@@ -81,6 +85,9 @@ class LearnedScorer(TokenImportanceScorer[SampleCacheWithHidden]):
         hidden_states = hidden_states[:, 1:, :] # (B, T-1, D)
         # hidden_states = hidden_states[:, :-1, :] # (B, T-1, D)
         hidden_states = hidden_states.detach()
+
+        if self.scorer._config.normalize_hidden:
+            hidden_states = F.normalize(hidden_states, dim=-1)
 
         # The t'th score corresponds to the t+1'th token's importance
         weights = self.scorer(hidden_states) # (B, T-1)

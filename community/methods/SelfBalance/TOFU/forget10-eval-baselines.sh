@@ -12,7 +12,7 @@ echo "Master Port: $MASTER_PORT"
 
 # Configuration
 model="Llama-3.2-1B-Instruct"
-model="Llama-2-7b-chat-hf"
+# model="Llama-2-7b-chat-hf"
 
 # for model_type in "full" "retain90"; do
 for model_type in "retain90"; do
@@ -22,22 +22,22 @@ for model_type in "retain90"; do
     ########################################
     # 1. TOFU EVALUATION
     ########################################
-    echo ""
-    echo "============================================"
-    echo " TOFU Evaluation: ${model_type} model"
-    echo "============================================"
+    # echo ""
+    # echo "============================================"
+    # echo " TOFU Evaluation: ${model_type} model"
+    # echo "============================================"
 
-    HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
-        python src/eval.py \
-        experiment=eval/tofu/default.yaml \
-        'eval=[tofu]' \
-        model=$model \
-        task_name=$task_name \
-        model.model_args.pretrained_model_name_or_path=$model_path \
-        +model.model_args.token=$HF_TOKEN \
-        +model.tokenizer_args.token=$HF_TOKEN \
-        ++model.model_args.device_map='auto' \
-        paths.output_dir=$(pwd)/saves/eval/${task_name}/tofu_evals
+    # HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
+    #     python src/eval.py \
+    #     experiment=eval/tofu/default.yaml \
+    #     'eval=[tofu]' \
+    #     model=$model \
+    #     task_name=$task_name \
+    #     model.model_args.pretrained_model_name_or_path=$model_path \
+    #     +model.model_args.token=$HF_TOKEN \
+    #     +model.tokenizer_args.token=$HF_TOKEN \
+    #     ++model.model_args.device_map='auto' \
+    #     paths.output_dir=$(pwd)/saves/eval/${task_name}/tofu_evals
 
     ########################################
     # 2. PARAPHRASE EVALUATION (no winrate)

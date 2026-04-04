@@ -35,7 +35,6 @@ __all__ = [
     'ScorerTrainerGradDiff',
     'ScorerTrainerGradDiffSpread',
     'ScorerTrainerGradDiffSoftmaxSpread',
-    'ScorerTrainerProjected',
     'ScorerTrainerTIDPO',
 ]
 
@@ -187,20 +186,13 @@ class ScorerTrainer:
             self.scheduler.step()
 
     def step(self, global_step: int, *caches: Cache):
-        self._call_count += 1
-        at_accum_boundary = self._call_count % self.accumulation_steps == 0
+        is_update_step = self.is_update_step(global_step)
+        is_backwards_step = self.backwards_every_step or is_update_step
 
-        wants_update = self.is_update_step(global_step)
-
-        # Backward on all micro-batches during an update window (or always if backwards_every_step)
-        do_backward = self.backwards_every_step or wants_update
-        # Only optimizer.step() at the last micro-batch of the accumulation window
-        do_update = wants_update and at_accum_boundary
-
-        if do_backward:
+        if is_backwards_step:
             self._backwards_step(*caches)
 
-        if do_update:
+        if is_update_step:
             self._update_step()
     
     def is_update_step(self, global_step: int):
@@ -245,108 +237,6 @@ class NoOpScorerTrainer:
 
     def is_update_step(self, global_step: int):
         return False
-
-
-class ScorerTrainerGradDiff_working(ScorerTrainer):
-    def __init__(
-        self,
-        lambda_entropy: float = 1.0,
-        lambda_population: float = 1.0,
-        budget: float = 0.3,
-        lambda_l2: float = 0.01,
-        **kwargs
-    ):
-        super().__init__(**kwargs)
-        self.lambda_entropy = lambda_entropy
-        self.lambda_population = lambda_population
-        self.budget = budget
-        self.lambda_l2 = lambda_l2
-
-    def _entropy_loss(
-        self, 
-        scores: torch.Tensor, 
-        mask: torch.Tensor,
-        epsilon: float = 1e-6
-    ):
-        scores = scores.clone()[mask]
-
-        g = scores.clamp(epsilon, 1 - epsilon)
-        entropy = -(g * g.log() + (1 - g) * (1 - g).log())
-
-        return entropy.mean()
-
-    def _population_loss(
-        self,
-        scores: torch.Tensor,
-        mask: torch.Tensor,
-        budget: float = 0.2
-    ):
-        # scores: (B, T), mask: (B, T)
-        hard = (scores > 0.5).float()
-        selected = hard.detach() - scores.detach() + scores  # STE trick
-        selected = selected * mask.float()
-
-        # Per-sequence mean of selected tokens
-        seq_counts = mask.sum(dim=1).clamp(min=1)  # (B,)
-        seq_means = selected.sum(dim=1) / seq_counts  # (B,)
-
-        return ((seq_means - budget) ** 2).mean()
-
-    def _l2_loss(self) -> torch.Tensor:
-        return sum(p.pow(2).sum() for p in self.scorer.parameters()) # type: ignore
-    
-    def compute_loss(
-        self,
-        forget_cache: Cache,
-        retain_cache: Cache
-    ):
-        # Forget term: (1 - g) * nll_forget -> pushes g toward 1 on high loss tokens
-        forget_loss, f_scores, f_mask = reweighted_NLL(
-            cache=forget_cache,
-            scorer=self.scorer,
-            scorer_requires_grad=True,
-            invert_probabilities=True,
-            # normalize_token_loss=True,
-        )
-
-        # Retain counter-term: (1 - g) * nll_retain -> pushes g toward 1 on high loss tokens
-        retain_loss, r_scores, r_mask = reweighted_NLL(
-            cache=retain_cache,
-            scorer=self.scorer,
-            scorer_requires_grad=True,
-            invert_probabilities=True,
-            # normalize_token_loss=True,
-        )
-
-        forget_entropy = self._entropy_loss(f_scores, f_mask)
-        forget_population = self._population_loss(f_scores, f_mask, budget=self.budget)
-        
-        retain_entropy = self._entropy_loss(r_scores, r_mask)
-        retain_population = self._population_loss(r_scores, r_mask, budget=self.budget)
-
-        l2 = self._l2_loss()
-
-        loss = (
-            retain_loss + forget_loss
-            + self.lambda_entropy * (forget_entropy + retain_entropy)
-            + self.lambda_population * (forget_population + retain_population)
-            + self.lambda_l2 * l2
-        )
-
-        logger.info(
-            "forget=%.3f f_entropy=%.3f f_budget=%.3f retain=%.3f r_entropy=%.3f r_budget=%.3f l2=%.3f total=%.3f",
-            forget_loss.item(), forget_entropy.item(), forget_population.item(),
-            retain_loss.item(), retain_entropy.item(), retain_population.item(),
-            l2.item(), loss.item()
-        )
-        
-        self._log_scores(f_scores, f_mask, prefix="forget ")
-        self._log_scores(r_scores, r_mask, prefix="retain ")
-
-        if self.optim_cfg.loss_reduction == "mean":
-            loss = loss / self.effective_batches
-
-        return loss
 
 
 class ScorerTrainerGradDiff(ScorerTrainer):
@@ -408,34 +298,45 @@ class ScorerTrainerGradDiff(ScorerTrainer):
             scorer=self.scorer,
             scorer_requires_grad=True,
             invert_probabilities=True,
-            # normalize_token_loss=True,
+        )
+
+        # Retain counter-term: (1 - g) * nll_retain -> pushes g toward 1 on high loss tokens
+        retain_loss, r_scores, r_mask = reweighted_NLL(
+            cache=retain_cache,
+            scorer=self.scorer,
+            scorer_requires_grad=True,
+            invert_probabilities=True,
         )
 
         forget_entropy = self._entropy_loss(f_scores, f_mask)
         forget_population = self._population_loss(f_scores, f_mask, budget=self.budget)
+        
+        retain_entropy = self._entropy_loss(r_scores, r_mask)
+        retain_population = self._population_loss(r_scores, r_mask, budget=self.budget)
 
         l2 = self._l2_loss()
 
         loss = (
-            forget_loss
-            + self.lambda_entropy * forget_entropy
-            + self.lambda_population * forget_population
+            retain_loss + forget_loss
+            + self.lambda_entropy * (forget_entropy + retain_entropy)
+            + self.lambda_population * (forget_population + retain_population)
             + self.lambda_l2 * l2
         )
 
         logger.info(
-            "forget=%.3f f_entropy=%.3f f_budget=%.3f l2=%.3f total=%.3f",
+            "forget=%.3f f_entropy=%.3f f_budget=%.3f retain=%.3f r_entropy=%.3f r_budget=%.3f l2=%.3f total=%.3f",
             forget_loss.item(), forget_entropy.item(), forget_population.item(),
+            retain_loss.item(), retain_entropy.item(), retain_population.item(),
             l2.item(), loss.item()
         )
         
         self._log_scores(f_scores, f_mask, prefix="forget ")
+        self._log_scores(r_scores, r_mask, prefix="retain ")
 
         if self.optim_cfg.loss_reduction == "mean":
             loss = loss / self.effective_batches
 
         return loss
-
 
 
 class ScorerTrainerTIDPO(ScorerTrainer):
@@ -927,77 +828,3 @@ class ScorerTrainerGradDiffSoftmaxSpread(ScorerTrainer):
 
         return loss
 
-
-class ScorerTrainerProjected(ScorerTrainerGradDiff):
-    """ScorerTrainerGradDiff with halfspace projection on the scorer vector.
-
-    After each optimizer step, projects theta to satisfy:
-        <theta, h_bar_F> <= alpha + epsilon
-
-    where h_bar_F is the mean hidden state of forget data, accumulated
-    across gradient accumulation micro-batches. Also zeros the scorer's
-    score_offset on every projection step.
-    """
-
-    def __init__(
-        self,
-        proj_alpha: float = 0.0,
-        proj_epsilon: float = 0.01,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.proj_alpha = proj_alpha
-        self.proj_epsilon = proj_epsilon
-
-        self._h_sum: torch.Tensor | None = None
-        self._h_count: int = 0
-
-    def _accumulate_forget_hidden(self, forget_cache: Cache) -> None:
-        """Add per-sample mean forget hidden states to the running sum."""
-        hidden = forget_cache.hidden_states[:, 1:, :].detach().float()  # type: ignore  # (B, T-1, D)
-        mask = self.scorer._build_valid_mask(forget_cache)  # (B, T-1)
-
-        counts = mask.sum(dim=1, keepdim=True).clamp(min=1)  # (B, 1)
-        per_sample = (hidden * mask.float().unsqueeze(-1)).sum(dim=1) / counts  # (B, D)
-        batch_sum = per_sample.sum(dim=0)  # (D,)
-
-        if self._h_sum is None:
-            self._h_sum = batch_sum
-        else:
-            self._h_sum = self._h_sum + batch_sum
-        self._h_count += hidden.size(0)
-
-    def compute_loss(self, forget_cache: Cache, retain_cache: Cache) -> torch.Tensor:
-        self._accumulate_forget_hidden(forget_cache)
-        return super().compute_loss(forget_cache, retain_cache)
-
-    def _project_theta(self) -> None:
-        """Project theta onto halfspace <theta, h_bar_F> <= b and zero the offset."""
-        if self._h_sum is None or self._h_count == 0:
-            return
-
-        h_bar = self._h_sum / self._h_count  # (D,)
-        b = self.proj_alpha + self.proj_epsilon
-
-        theta = self.scorer.theta  # type: ignore  # nn.Parameter
-        dot = torch.dot(theta.data.float(), h_bar)
-
-        if dot.item() > b:
-            h_norm_sq = torch.dot(h_bar, h_bar).clamp(min=1e-12)
-            theta.data -= ((dot - b) / h_norm_sq) * h_bar.to(theta.dtype)
-
-            logger.info(
-                "projection: dot=%.4f b=%.4f violation=%.4f ||h_bar||=%.4f",
-                dot.item(), b, (dot.item() - b), h_norm_sq.sqrt().item(),
-            )
-
-        # Zero the scorer offset
-        self.scorer.score_offset = 0.0  # type: ignore
-
-        # Reset accumulators
-        self._h_sum = None
-        self._h_count = 0
-
-    def _update_step(self) -> None:
-        super()._update_step()
-        self._project_theta()

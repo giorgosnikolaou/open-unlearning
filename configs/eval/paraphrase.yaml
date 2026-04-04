@@ -21,6 +21,8 @@ batch_size: 8
 judge:
   type: "openai"  # "local", "openai", or "gemini"
   model: "gpt-4o-mini"  # Model name (for openai/local/vllm)
+  # model: "gpt-5.4-nano"  # Model name (for openai/local/vllm)
+  # model: "gpt-5.4-mini"  # Model name (for openai/local/vllm)
   # model: "meta-llama/Llama-3.3-70B-Instruct"
   # quantize: True
   chunk_size: null  # null means auto (3 for forget, 5 for retain)

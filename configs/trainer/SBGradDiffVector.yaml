@@ -10,29 +10,17 @@ args:
 method_args:
   alpha: 1.0
   gamma: 1.0
-  beta: 5.0
 
   scorer:
-    _target_: scorers.LearnedScorer
-    cfg:
-      _target_: scorers.ScorerConfig
-      input_dimension: 2048
-      layers: 1
-      scale_factor: 1.0
-      use_sigmoid: true
-      zero_init: true
-      use_bias: true
-    pretrained_path: null
-
-  scorer_pretrain:
-    _target_: trainer.unlearn.sb.ScorerPretrainConfig
-    epochs: 0
-    lr: 5.0e-2
-    freeze_after: false
+    _target_: scorers.VectorScorer
+    input_dimension: 2048
+    score_offset: 1.0
 
   scorer_trainer:
-    _target_: trainer.unlearn.Scorer.ScorerTrainerGradDiff
+    _target_: trainer.unlearn.Scorer.ScorerTrainerProjected
     _partial_: true
+    proj_alpha: 0.0
+    proj_epsilon: 0.01
     lambda_entropy: 1.0
     lambda_population: 1.0
     budget: 0.2

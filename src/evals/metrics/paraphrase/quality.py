@@ -150,15 +150,12 @@ def _generate_responses(
                 eos_token_id=tokenizer.eos_token_id,
             )
 
-        print(tokenizer.decode(tokenized["input_ids"]))
         # Decode only the newly generated tokens for each variant
         for i, qid in enumerate(qids):
             generated_ids = outputs[i, max_len:]
             response = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
             result_dict[f"ans_{qid}"] = response
-            print(response, end='\n' + '-' * 100 + '\n')
         logs.append(result_dict)
-        exit(0)
 
     return logs
 
