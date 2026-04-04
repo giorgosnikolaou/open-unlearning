@@ -295,98 +295,7 @@ class WinrateJudge:
 
     def win_rate_evaluation(self) -> None:
         """Perform win-rate evaluation comparing pretrained and unlearned models."""
-        if not self.out_file_path.is_file():
-            data_pairs: List[Dict[str, str]] = []
-
-            with open(self.repfile_base, "r") as f:
-                data1 = json.load(f)['results']
-            with open(self.repfile_unlearnt, "r") as f:
-                data2 = json.load(f)['results']
-
-            ct = 0
-            for (item1, item2) in zip(data1, data2):
-                data_pairs.append({
-                    "question": f"{item1['instruction']}. (Pair {ct+1})",
-                    "answer_1": f"{item1['prediction']}. (Assistant 1, Pair {ct+1})",
-                    "answer_2": f"{item2['prediction']}. (Assistant 2, Pair {ct+1})"
-                })
-                ct += 1
-                if ct >= self.nsamples:
-                    break
-
-            evaluation_results: List[Dict[str, Any]] = []
-
-            self.logger.info(
-                f"Starting evaluation of {len(data_pairs)} question-answer pairs... "
-                f"for unlearn-model against {self.name}"
-            )
-
-            for i, pair in enumerate(pbar := tqdm(data_pairs, desc="Winrate")):
-                question = pair["question"]
-                answer_1 = pair["answer_1"]
-                answer_2 = pair["answer_2"]
-
-                full_prompt = self.prompt_template.format(
-                    question=question,
-                    answer_1=answer_1,
-                    answer_2=answer_2,
-                    criteria=self.criteria
-                )
-
-                try:
-                    judge_response_obj = self.call_judge_api(full_prompt)
-
-                    if judge_response_obj:
-                        score_assistant_1 = judge_response_obj.get('score_assistant_1')
-                        score_assistant_2 = judge_response_obj.get('score_assistant_2')
-                        explanation = judge_response_obj.get('explanation')
-                    else:
-                        score_assistant_1 = None
-                        score_assistant_2 = None
-                        explanation = "Failed to get structured response from API."
-                        self.logger.error(f"Error: No structured response for question: {question}")
-
-                except Exception as e:
-                    self.logger.error(f"An error occurred while processing question: {question}. Error: {e}")
-                    score_assistant_1 = None
-                    score_assistant_2 = None
-                    explanation = f"Processing error: {e}"
-
-                evaluation_results.append({
-                    "question": question,
-                    "answer_asst_1": answer_1,
-                    "answer_asst_2": answer_2,
-                    "score_assistant_1": score_assistant_1,
-                    "score_assistant_2": score_assistant_2,
-                    "explanation": explanation
-                })
-
-                wr, cts = self.calculate_win_rate(evaluation_results)
-                pbar.set_postfix(wr=f"{wr:.3f}", W=cts["wins"], L=cts["losses"], T=cts["ties"])
-
-            win_rate, counts = self.calculate_win_rate(evaluation_results)
-
-            self.logger.info(f"Total comparisons: {len(evaluation_results)}")
-            self.logger.info(f"Assistant 2 Wins: {counts['wins']}")
-            self.logger.info(f"Assistant 1 Wins: {counts['losses']}")
-            self.logger.info(f"Ties: {counts['ties']}")
-            self.logger.info(f"Win Rate for Assistant 2 (vs. Assistant 1): {win_rate}")
-
-            savefile: Dict[str, Any] = {
-                "winrate": win_rate,
-                "counts": counts,
-                "results": evaluation_results
-            }
-
-            try:
-                with open(self.out_file_path, 'w', encoding='utf-8') as f:
-                    json.dump(savefile, f, indent=4, ensure_ascii=False)
-                self.logger.info(f"Evaluation complete. Results saved to {self.out_file_path}")
-            except Exception as e:
-                self.logger.error(f"An unexpected error occurred while saving results: {e}")
-                raise
-
-        else:
+        if self.out_file_path.is_file():
             self.logger.info(f"Responses from judge already exist at {self.out_file_path}")
 
             with open(self.out_file_path, "r") as f:
@@ -398,3 +307,119 @@ class WinrateJudge:
             self.logger.info(f"Assistant 1 Wins: {counts['losses']}")
             self.logger.info(f"Ties: {counts['ties']}")
             self.logger.info(f"Win Rate for Assistant 2 (vs. Assistant 1): {win_rate}")
+            return
+
+        data_pairs: List[Dict[str, str]] = []
+
+        with open(self.repfile_base, "r") as f:
+            data1 = json.load(f)['results']
+        with open(self.repfile_unlearnt, "r") as f:
+            data2 = json.load(f)['results']
+
+        ct = 0
+        for (item1, item2) in zip(data1, data2):
+            data_pairs.append({
+                "question": f"{item1['instruction']}. (Pair {ct+1})",
+                "answer_1": f"{item1['prediction']}. (Assistant 1, Pair {ct+1})",
+                "answer_2": f"{item2['prediction']}. (Assistant 2, Pair {ct+1})"
+            })
+            ct += 1
+            if ct >= self.nsamples:
+                break
+
+        # Resume from partial checkpoint if it exists
+        partial_path = self.out_file_path.with_suffix(".partial")
+        evaluation_results: List[Dict[str, Any]] = []
+        start_idx = 0
+        if partial_path.exists():
+            with open(partial_path) as f:
+                for line in f:
+                    if line.strip():
+                        evaluation_results.append(json.loads(line))
+            start_idx = len(evaluation_results)
+            self.logger.info(f"Resuming winrate from {start_idx} saved pairs")
+
+        self.logger.info(
+            f"Evaluating {len(data_pairs) - start_idx} remaining pairs "
+            f"(of {len(data_pairs)} total) for unlearn-model against {self.name}"
+        )
+
+        pbar = tqdm(
+            enumerate(data_pairs[start_idx:], start=start_idx),
+            total=len(data_pairs) - start_idx,
+            desc="Winrate",
+        )
+        for i, pair in pbar:
+            question = pair["question"]
+            answer_1 = pair["answer_1"]
+            answer_2 = pair["answer_2"]
+
+            full_prompt = self.prompt_template.format(
+                question=question,
+                answer_1=answer_1,
+                answer_2=answer_2,
+                criteria=self.criteria
+            )
+
+            try:
+                judge_response_obj = self.call_judge_api(full_prompt)
+
+                if judge_response_obj:
+                    score_assistant_1 = judge_response_obj.get('score_assistant_1')
+                    score_assistant_2 = judge_response_obj.get('score_assistant_2')
+                    explanation = judge_response_obj.get('explanation')
+                else:
+                    score_assistant_1 = None
+                    score_assistant_2 = None
+                    explanation = "Failed to get structured response from API."
+                    self.logger.error(f"Error: No structured response for question: {question}")
+
+            except Exception as e:
+                self.logger.error(f"An error occurred while processing question: {question}. Error: {e}")
+                score_assistant_1 = None
+                score_assistant_2 = None
+                explanation = f"Processing error: {e}"
+
+            result_entry = {
+                "question": question,
+                "answer_asst_1": answer_1,
+                "answer_asst_2": answer_2,
+                "score_assistant_1": score_assistant_1,
+                "score_assistant_2": score_assistant_2,
+                "explanation": explanation
+            }
+            evaluation_results.append(result_entry)
+
+            # Save incrementally to partial checkpoint
+            with open(partial_path, "a") as f:
+                f.write(json.dumps(result_entry) + "\n")
+
+            wr, cts = self.calculate_win_rate(evaluation_results)
+            pbar.set_postfix(wr=f"{wr:.3f}", W=cts["wins"], L=cts["losses"], T=cts["ties"])
+
+        win_rate, counts = self.calculate_win_rate(evaluation_results)
+
+        self.logger.info(f"Total comparisons: {len(evaluation_results)}")
+        self.logger.info(f"Assistant 2 Wins: {counts['wins']}")
+        self.logger.info(f"Assistant 1 Wins: {counts['losses']}")
+        self.logger.info(f"Ties: {counts['ties']}")
+        self.logger.info(f"Win Rate for Assistant 2 (vs. Assistant 1): {win_rate}")
+
+        savefile: Dict[str, Any] = {
+            "winrate": win_rate,
+            "counts": counts,
+            "results": evaluation_results
+        }
+
+        try:
+            with open(self.out_file_path, 'w', encoding='utf-8') as f:
+                json.dump(savefile, f, indent=4, ensure_ascii=False)
+            self.logger.info(f"Evaluation complete. Results saved to {self.out_file_path}")
+
+            # Clean up partial checkpoint
+            if partial_path.exists():
+                partial_path.unlink()
+                self.logger.info("Cleaned up partial checkpoint")
+        except Exception as e:
+            self.logger.error(f"An unexpected error occurred while saving results: {e}")
+            raise

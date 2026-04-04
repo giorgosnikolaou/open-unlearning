@@ -4,12 +4,13 @@ Combines worst-case (WorstEval) and average-case (AvgEval) evaluators
 with the underlying math helpers (compute_any_one_average, check_yes_no,
 average_case_acc).
 """
-import json
 import logging
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 import numpy.typing as npt
+
+from evals.metrics.paraphrase.utils import load_jsonl
 
 logger = logging.getLogger(__name__)
 
@@ -147,10 +148,8 @@ class WorstEval:
         Returns:
             Dictionary with J_P, J_ICR, J_W, and agg_value.
         """
-        with open(self.responsefiles[0]) as f:
-            evals_para = json.load(f)
-        with open(self.responsefiles[1]) as f:
-            evals_icr = json.load(f)
+        evals_para = load_jsonl(self.responsefiles[0])
+        evals_icr = load_jsonl(self.responsefiles[1])
 
         # Align samples by GT to handle mismatched lengths
         if len(evals_para) != len(evals_icr):
@@ -251,8 +250,7 @@ class AvgEval:
         Returns:
             Dictionary with J_avg and agg_value.
         """
-        with open(self.responsefiles[0]) as f:
-            evals_para = json.load(f)[:self.max_samples]
+        evals_para = load_jsonl(self.responsefiles[0])[:self.max_samples]
         q_names = list({k: v for k, v in evals_para[0].items() if k != "GT"}.keys())
 
         try:

@@ -17,7 +17,7 @@ icr:
   hf_args:
     path: "ngiorgos/TOFU"
     name: "qa"
-    split: "retain90"
+    split: "${eval.paraphrase.retain_split}"
 
 # Inherit shared settings from parent
 judge: ${eval.paraphrase.judge}

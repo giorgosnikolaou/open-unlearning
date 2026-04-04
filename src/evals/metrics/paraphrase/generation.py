@@ -68,8 +68,22 @@ class Evaluator:
         self.log_path = f"{icr_suffix}.log"
 
     def save_logs(self) -> None:
-        """Save the logs to a JSON file."""
+        """Save all logs to a JSONL file (one JSON object per line)."""
         self.out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.out_path, "w") as f:
-            json.dump(self.logs, f, indent=4)
+            for entry in self.logs:
+                f.write(json.dumps(entry) + "\n")
         self.logger.info(f"Saved {len(self.logs)} generations to: {self.out_path}")
+
+    def append_log(self, entry: Dict[str, Any]) -> None:
+        """Append a single entry to the JSONL file (incremental saving)."""
+        self.out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.out_path, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def count_saved(self) -> int:
+        """Count the number of entries already saved to the output file."""
+        if not self.out_path.exists():
+            return 0
+        with open(self.out_path) as f:
+            return sum(1 for line in f if line.strip())

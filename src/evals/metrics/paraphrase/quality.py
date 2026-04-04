@@ -31,6 +31,8 @@ def _generate_responses(
     icr: bool,
     icr_dataset=None,
     system_prompt: Optional[str] = None,
+    start_idx: int = 0,
+    evaluator: Optional["Evaluator"] = None,
 ) -> List[Dict[str, str]]:
     """Generate model responses for all question variants in the dataset.
 
@@ -72,7 +74,10 @@ def _generate_responses(
     num_samples = min(len(data), max_samples)
     logs: List[Dict[str, str]] = []
 
-    for idx in tqdm(range(num_samples), desc=f"Generating (ICR={icr})"):
+    if start_idx > 0:
+        logger.info(f"Resuming generation from sample {start_idx}/{num_samples}")
+
+    for idx in tqdm(range(start_idx, num_samples), desc=f"Generating (ICR={icr})"):
         sample = data[idx]
 
         # Include ground truth so the generation file is self-contained
@@ -155,6 +160,10 @@ def _generate_responses(
             generated_ids = outputs[i, max_len:]
             response = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
             result_dict[f"ans_{qid}"] = response
+
+        # Save incrementally if evaluator is provided
+        if evaluator is not None:
+            evaluator.append_log(result_dict)
         logs.append(result_dict)
 
     return logs
@@ -187,6 +196,7 @@ def _evaluate_quality(
 
     # Required configuration
     eval_task: str = kwargs["eval_task"]
+    generation_only: bool = kwargs.get("generation_only", False)
     judge_cfg: Dict[str, Any] = kwargs.get("judge", {})
     generation_cfg: Dict[str, Any] = kwargs.get("generation", {})
     output_base_cfg: Dict[str, str] = kwargs.get("output_base", {})
@@ -249,21 +259,39 @@ def _evaluate_quality(
             judge_files.append(judge_file)
             continue
 
-        # Run generation if needed
-        if not gen_file.exists():
-            logger.info(f"Generating responses for {task} set with ICR={icr}")
-            logs = _generate_responses(
-                model=model,
-                tokenizer=tokenizer,
-                data=data,
-                max_samples=max_samples,
-                generation_cfg=generation_cfg,
-                icr=icr,
-                icr_dataset=icr_dataset,
-                system_prompt=system_prompt,
-            )
-            evaluator.logs = logs
-            evaluator.save_logs()
+        # Run generation if needed (with resume support)
+        if model is None:
+            # Judge-only mode: generation files must already exist
+            if not gen_file.exists():
+                raise FileNotFoundError(
+                    f"judge_only=True but generation file not found: {gen_file}. "
+                    "Run the generation phase first."
+                )
+            logger.info(f"judge_only mode — using existing generation: {gen_file}")
+        else:
+            num_samples = min(len(data), max_samples)
+            start_idx = evaluator.count_saved()
+            if start_idx < num_samples:
+                logger.info(f"Generating responses for {task} set with ICR={icr}")
+                _generate_responses(
+                    model=model,
+                    tokenizer=tokenizer,
+                    data=data,
+                    max_samples=max_samples,
+                    generation_cfg=generation_cfg,
+                    icr=icr,
+                    icr_dataset=icr_dataset,
+                    system_prompt=system_prompt,
+                    start_idx=start_idx,
+                    evaluator=evaluator,
+                )
+            else:
+                logger.info(f"Generation already complete ({start_idx} samples): {gen_file}")
+
+        # Skip judging if generation_only mode
+        if generation_only:
+            logger.info(f"generation_only=True — skipping judge for {task} ICR={icr}")
+            continue
 
         # Run judge evaluation
         if gen_file.exists():
@@ -289,6 +317,10 @@ def _evaluate_quality(
             judge_files.append(judge.jg_file_path)
         else:
             raise FileNotFoundError(f"Generation file not found: {gen_file}")
+
+    # In generation_only mode, return sentinel (no judging was done)
+    if generation_only:
+        return {"agg_value": None, "generation_only": True}
 
     # Compute aggregated metrics
     logger.info(f"Computing {task} metrics with {aggregator_cls.__name__}")

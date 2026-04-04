@@ -9,7 +9,7 @@ from pydantic import create_model
 from tqdm import tqdm
 
 from evals.metrics.paraphrase.judges.local import LocalJudge
-from evals.metrics.paraphrase.utils import get_api_key, setup_logger
+from evals.metrics.paraphrase.utils import get_api_key, load_jsonl, setup_logger
 
 warnings.filterwarnings("ignore")
 
@@ -151,10 +151,19 @@ class QualityJudge:
             return None
 
     def save_logs(self) -> None:
-        """Save the logs to a JSON file."""
+        """Save all judged responses to a JSONL file (one JSON object per line)."""
+        self.jg_file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.jg_file_path, "w") as f:
-            json.dump(self.formatted_response, f, indent=4)
-        self.logger.info(f"Saved {len(self.formatted_response)} generations to: {self.jg_file_path}")
+            for entry in self.formatted_response:
+                f.write(json.dumps(entry) + "\n")
+        self.logger.info(f"Saved {len(self.formatted_response)} judgments to: {self.jg_file_path}")
+
+    def _append_chunk(self, chunk_entries: List[Dict[str, Any]]) -> None:
+        """Append a chunk of judged entries to the JSONL file (incremental saving)."""
+        self.jg_file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.jg_file_path, "a") as f:
+            for entry in chunk_entries:
+                f.write(json.dumps(entry) + "\n")
 
     def _save_debug_log(self, alternate_json: List[Dict[str, Any]]) -> None:
         """Save a detailed debug log combining inputs and judge verdicts."""
@@ -294,12 +303,11 @@ class QualityJudge:
             return None
 
     def generate(self) -> None:
-        """Performs the LLM-based judging process."""
+        """Performs the LLM-based judging process with incremental saving."""
         if self.judge_type == "gemini":
             client = genai.Client(api_key=self.api_key)
 
-        with open(self.gen_file, 'r') as f:
-            responses = json.load(f)
+        responses = load_jsonl(self.gen_file)
 
         # Load prompt from judges/prompts/ subdirectory
         prompt_dir = Path(__file__).parent / "prompts"
@@ -316,7 +324,16 @@ class QualityJudge:
                 processed[f"ans_{qid}"] = entry[f"ans_{qid}"].lower().replace("assistant", "--")
             alternate_json.append(processed)
 
-        self.formatted_response = []
+        # Resume from existing partial judgments
+        if self.jg_file_path.exists():
+            self.formatted_response = load_jsonl(self.jg_file_path)
+            self.logger.info(
+                f"Resuming judging from {len(self.formatted_response)} "
+                f"already-judged samples"
+            )
+        else:
+            self.formatted_response = []
+        start_sample = len(self.formatted_response)
 
         # Build dynamic Pydantic response schema from actual question fields
         answer_fields = {f"ans_{q}": (str, ...) for q in self.questions}
@@ -328,14 +345,22 @@ class QualityJudge:
         else:
             score_label = "J_avg"
 
+        # Determine where to start based on already-judged samples
+        # Each chunk covers chunk_size samples, so start from the chunk boundary
+        start_offset = (start_sample // self.chunk_size) * self.chunk_size
+
         pbar = tqdm(
-            range(0, len(alternate_json), self.chunk_size),
+            range(start_offset, len(alternate_json), self.chunk_size),
             desc=f"Judging {self.task} (ICR={self.icr_data})",
         )
         for i in pbar:
             chunk = alternate_json[i:i + self.chunk_size]
             chunk_num = i // self.chunk_size + 1
             total_chunks = (len(alternate_json) + self.chunk_size - 1) // self.chunk_size
+
+            # Skip chunks already covered by resumed data
+            if i + len(chunk) <= start_sample:
+                continue
 
             if chunk_num == 1 and chunk:
                 answer_fields_list = [k for k in chunk[0].keys() if k.startswith('ans_')]
@@ -526,6 +551,7 @@ class QualityJudge:
                     )
 
                 self.formatted_response.extend(formatted_response_chunk)
+                self._append_chunk(formatted_response_chunk)
 
                 # Update running score in tqdm postfix
                 if self.task == 'forget':
@@ -552,7 +578,7 @@ class QualityJudge:
                 pbar.set_postfix(**{score_label: f"{score:.3f}"})
 
         self.logger.info(f"LKF {self.judge_type} judge evals done for {self.task} set - iCR {self.icr_data}")
-        self.save_logs()
+        self.logger.info(f"Total judged: {len(self.formatted_response)} samples saved to: {self.jg_file_path}")
         self._save_debug_log(alternate_json)
 
         if self.openai_costs:

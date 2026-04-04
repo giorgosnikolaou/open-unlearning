@@ -4,7 +4,7 @@ TOFU_para_retain_eval:
     hf_args:
       path: "ngiorgos/TOFU"
       name: "qa_with_paraphrases"
-      split: "retain90"
+      split: "${eval.paraphrase.retain_split}"
     question_key: "question"
     answer_key: "answer"
     paraphrases_key: "paraphrases"

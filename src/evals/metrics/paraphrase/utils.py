@@ -1,8 +1,9 @@
 """Pure utility helpers for paraphrase evaluation."""
+import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 
 def get_api_key(api_key: Optional[str] = None) -> str:
@@ -27,6 +28,23 @@ def get_api_key(api_key: Optional[str] = None) -> str:
             "variable or pass via api_key parameter."
         )
     return key
+
+
+def load_jsonl(path: Path) -> List[Dict[str, Any]]:
+    """Load a list of dicts, supporting both JSON array and JSONL formats.
+
+    Args:
+        path: Path to the file.
+
+    Returns:
+        List of dictionaries loaded from the file.
+    """
+    with open(path) as f:
+        first_char = f.read(1)
+        f.seek(0)
+        if first_char == "[":
+            return json.load(f)  # legacy monolithic JSON array
+        return [json.loads(line) for line in f if line.strip()]
 
 
 def setup_logger(

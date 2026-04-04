@@ -1,9 +1,13 @@
+import logging
+
 import hydra
 from omegaconf import DictConfig
 
 from trainer.utils import seed_everything
-from model import get_model
+from model import get_model, get_tokenizer
 from evals import get_evaluators
+
+logger = logging.getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="eval.yaml")
@@ -16,7 +20,14 @@ def main(cfg: DictConfig):
     model_cfg = cfg.model
     template_args = model_cfg.template_args
     assert model_cfg is not None, "Invalid model yaml passed in train config."
-    model, tokenizer = get_model(model_cfg)
+
+    judge_only = cfg.get("judge_only", False)
+    if judge_only:
+        logger.info("judge_only=True — skipping model loading, loading tokenizer only")
+        model = None
+        tokenizer = get_tokenizer(model_cfg.tokenizer_args)
+    else:
+        model, tokenizer = get_model(model_cfg)
 
     eval_cfgs = cfg.eval
     evaluators = get_evaluators(eval_cfgs)

@@ -113,6 +113,11 @@ def repetitiveness(model, **kwargs) -> Dict[str, Any]:
             - entropy: Raw n-gram entropy value
             - num_samples: Number of samples evaluated
     """
+    if model is None:
+        raise RuntimeError(
+            "repetitiveness requires a model for generation. In judge_only mode, "
+            "results must already be cached from the generation phase."
+        )
     tokenizer = kwargs["tokenizer"]
     template_args = kwargs["template_args"]
     # Allow metric-level system prompt override (e.g. to use original prompt
@@ -154,10 +159,30 @@ def repetitiveness(model, **kwargs) -> Dict[str, Any]:
         all_attention_masks.append(tokenized["attention_mask"])
         questions.append(sample)
 
-    # Generate completions in batches with left-padding
-    logger.info(f"Generating {len(all_input_ids)} completions for repetitiveness evaluation")
+    # Set up partial checkpoint for preemption resilience
+    partial_path: Optional[Path] = None
+    if output_dir:
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        partial_path = output_path / "repetitiveness_partial.jsonl"
+
+    # Resume from partial checkpoint if it exists
     outputs: List[str] = []
-    for i in tqdm(range(0, len(all_input_ids), batch_size), desc=f"Repetitiveness (Batch Size: {batch_size})"):
+    resumed_questions: List[Dict[str, Any]] = []
+    start_idx = 0
+    if partial_path and partial_path.exists():
+        with open(partial_path) as f:
+            for line in f:
+                if line.strip():
+                    entry = json.loads(line)
+                    outputs.append(entry["prediction"])
+                    resumed_questions.append({"instruction": entry["instruction"]})
+        start_idx = len(outputs)
+        logger.info(f"Resuming repetitiveness from {start_idx} saved samples")
+
+    # Generate completions in batches with left-padding
+    logger.info(f"Generating {len(all_input_ids) - start_idx} remaining completions for repetitiveness evaluation")
+    for i in tqdm(range(start_idx, len(all_input_ids), batch_size), desc=f"Repetitiveness (Batch Size: {batch_size})"):
         batch_ids = all_input_ids[i:i + batch_size]
         batch_masks = all_attention_masks[i:i + batch_size]
 
@@ -187,10 +212,22 @@ def repetitiveness(model, **kwargs) -> Dict[str, Any]:
                 eos_token_id=tokenizer.eos_token_id,
             )
 
+        # Save each sample incrementally
+        batch_entries = []
         for j in range(len(batch_ids)):
             generated = gen_outputs[j, max_len:]
             response = tokenizer.decode(generated, skip_special_tokens=True).strip()
             outputs.append(response)
+            q = questions[i + j]
+            batch_entries.append({
+                "instruction": q.get("instruction", q.get("question", "")),
+                "prediction": response,
+            })
+
+        if partial_path:
+            with open(partial_path, "a") as f:
+                for entry in batch_entries:
+                    f.write(json.dumps(entry) + "\n")
 
     # Compute entropy
     entropy = n_gram_entropy(outputs)
@@ -198,18 +235,20 @@ def repetitiveness(model, **kwargs) -> Dict[str, Any]:
 
     logger.info(f"Repetitiveness entropy: {scaled_entropy:.4f}")
 
-    # Optionally save results
+    # Save final results and clean up partial checkpoint
     if output_dir:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
         # Prepare results (only keep instruction + prediction)
+        # For resumed samples, use the resumed questions; for new ones, use original questions
+        all_questions = resumed_questions + questions[start_idx:]
         results = [
             {
                 "instruction": q.get("instruction", q.get("question", "")),
                 "prediction": answer,
             }
-            for answer, q in zip(outputs, questions)
+            for answer, q in zip(outputs, all_questions)
         ]
 
         output_result = {
@@ -229,6 +268,11 @@ def repetitiveness(model, **kwargs) -> Dict[str, Any]:
         with open(rep_file, 'w') as f:
             json.dump(output_result, f, indent=4)
         logger.info(f"Saved winrate-compatible results to: {rep_file}")
+
+        # Clean up partial checkpoint
+        if partial_path and partial_path.exists():
+            partial_path.unlink()
+            logger.info("Cleaned up partial checkpoint")
 
     return {
         "agg_value": scaled_entropy,
