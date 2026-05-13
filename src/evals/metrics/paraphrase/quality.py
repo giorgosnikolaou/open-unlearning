@@ -97,7 +97,7 @@ def _generate_responses(
             qids.append(qid)
 
             if icr and icr_dataset is not None:
-                icr_examples = icr_dataset.shuffle().select(range(ICR_NUM_EXAMPLES))
+                icr_examples = icr_dataset.shuffle(seed=idx).select(range(ICR_NUM_EXAMPLES))
                 prompt_msgs = [ex["question"] for ex in icr_examples] + [item["question_text"]]
                 response_msgs = [ex["answer"] for ex in icr_examples] + [""]
                 tokenized = preprocess_chat_instance(
@@ -211,6 +211,7 @@ def _evaluate_quality(
     fix_qwen_keys: bool = judge_cfg.get("fix_qwen_keys", True)
     substring_heuristic: bool = judge_cfg.get("substring_heuristic", True)
     seed: Optional[int] = judge_cfg.get("seed", 42)
+    prompt_file: Optional[str] = judge_cfg.get("prompt_file")
 
     # Shared judge instance (created once by ParaphraseEvaluator)
     judge_instance: Optional[Any] = kwargs.get("judge_instance")
@@ -312,6 +313,7 @@ def _evaluate_quality(
                 substring_heuristic=substring_heuristic,
                 judge_instance=judge_instance,
                 seed=seed,
+                prompt_file=prompt_file,
             )
             judge.generate()
             judge_files.append(judge.jg_file_path)

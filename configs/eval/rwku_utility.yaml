@@ -1,0 +1,19 @@
+# @package eval.rwku_utility
+# Utility evaluation for RWKU via lm-evaluation-harness.
+# Covers: MMLU (general), BBH (reasoning), TruthfulQA (truthfulness),
+# TriviaQA (factuality).
+
+handler: LMEvalEvaluator
+output_dir: ${paths.output_dir}
+overwrite: false
+
+tasks:
+  - mmlu
+  - bbh
+  - truthfulqa_mc1
+  - triviaqa
+
+simple_evaluate_args:
+  batch_size: 16
+  system_instruction: null
+  apply_chat_template: false

@@ -1,0 +1,19 @@
+# @package eval.paraphrase
+# RWKU paraphrase evaluation — extends base paraphrase config with RWKU quality metrics.
+
+defaults:
+  - paraphrase_metrics:
+    # - RWKU/mia_loss
+    # - RWKU/mia_min_k
+    # - RWKU/mia_min_k_plus_plus
+    # - RWKU/mia_zlib
+    # - RWKU/mia_gradnorm
+    - RWKU/neighbor_quality_level1
+    - RWKU/neighbor_quality_level2
+    - RWKU/forget_quality_level1
+    - RWKU/forget_quality_level2
+    - RWKU/forget_quality_level3
+  - paraphrase
+
+judge:
+  prompt_file: openai_rwku.txt

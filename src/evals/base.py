@@ -54,8 +54,6 @@ class Evaluator:
         """Summarize the metrics results"""
         metric_summary = {}
         for metric_name, metric_results in logs.items():
-            if metric_name not in self.metrics:
-                continue
             agg_value = metric_results.get("agg_value", None)
             if agg_value is not None:
                 metric_summary[metric_name] = agg_value
@@ -66,7 +64,8 @@ class Evaluator:
         overwrite = self.eval_cfg.overwrite if overwrite is None else overwrite
 
         # Prepare model for evaluation
-        model = self.prepare_model(model)
+        if model is not None:
+            model = self.prepare_model(model)
 
         # Set output_dir and file to store results
         output_dir = output_dir if output_dir else self.eval_cfg.output_dir
@@ -82,7 +81,7 @@ class Evaluator:
             f"Aggregated evaluations will be summarised in: {summary_file_path}"
         )
         for metric_name, metric_fn in self.metrics.items():
-            if not overwrite and metric_name in logs and logs[metric_name]:
+            if not overwrite and metric_name in logs and logs[metric_name] and not logs[metric_name].get("generation_only"):
                 logger.info(f"Skipping {metric_name}, already evaluated.")
                 if "agg_value" in logs[metric_name]:
                     logger.info(

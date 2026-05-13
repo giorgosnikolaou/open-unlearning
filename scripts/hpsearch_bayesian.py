@@ -291,6 +291,30 @@ SCORER_INITIAL = {
     "beta": 5.0,
 }
 
+
+def _suggest_fundial(trial: optuna.Trial) -> dict[str, Any]:
+    lr = trial.suggest_float("lr", 1e-6, 5e-5, log=True)
+    gamma = trial.suggest_float("gamma", 0.1, 5.0, log=True)
+    alpha = trial.suggest_float("alpha", 0.1, 5.0, log=True)
+    beta = trial.suggest_float("beta", 1.0, 30.0, log=True)
+    mask_type = trial.suggest_categorical("mask_type", ["noun", "entity"])
+    return {
+        "trainer.args.learning_rate": lr,
+        "trainer.method_args.gamma": gamma,
+        "trainer.method_args.alpha": alpha,
+        "trainer.method_args.beta": beta,
+        "trainer.method_args.mask_type": mask_type,
+    }
+
+
+FUNDIAL_INITIAL = {
+    "lr": 1e-5,
+    "gamma": 1.0,
+    "alpha": 1.0,
+    "beta": 10.0,
+    "mask_type": "noun",
+}
+
 # ─────────────────────────────────────────────────────────────────────
 # Method registry
 # ─────────────────────────────────────────────────────────────────────
@@ -353,6 +377,28 @@ METHODS: dict[str, MethodConfig] = {
             "trainer.method_args.scorer_trainer.lambda_population=10",
             "trainer.method_args.scorer_trainer.budget=0.2",
             "trainer.method_args.scorer_trainer.lambda_l2=1"
+        ],
+    ),
+    "FUNDIAL": MethodConfig(
+        name="FUNDIAL",
+        experiment="unlearn/tofu/default",
+        suggest_params=_suggest_fundial,
+        initial_params=FUNDIAL_INITIAL,
+    ),
+    "SBFUNDIAL": MethodConfig(
+        name="SBFUNDIAL",
+        experiment="unlearn/tofu/default",
+        suggest_params=_suggest_sbfundial,
+        initial_params=SBFUNDIAL_INITIAL,
+        trainer_name="SBFUNDIALLearned",
+        extra_overrides=[
+            "trainer.method_args.scorer.cfg.input_dimension=2048",
+            "trainer.method_args.scorer_trainer.optim_cfg.update_every_n_steps=5",
+            "+trainer.method_args.scorer_trainer.optim_cfg.scheduler=linear",
+            "trainer.method_args.scorer_trainer.lambda_entropy=1",
+            "trainer.method_args.scorer_trainer.lambda_population=10",
+            "trainer.method_args.scorer_trainer.budget=0.2",
+            "trainer.method_args.scorer_trainer.lambda_l2=1",
         ],
     ),
 }

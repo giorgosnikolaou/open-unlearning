@@ -37,6 +37,11 @@ SCORER_alpha=${SCORER_alpha:-$(get_param Scorer alpha)}
 SCORER_beta=${SCORER_beta:-$(get_param Scorer beta)}
 
 task_name="SB_TOFU/${model}/${forget_split}/Scorer"
+
+scorer_lr=0.05
+scorer_pop=15
+task_name="Learned/Optimal_slr_${scorer_lr}/ScorerForget05"
+
 model_output="saves/unlearn/${task_name}"
 
 # ══════════════════════════════════════════
@@ -74,7 +79,7 @@ HYDRA_FULL_ERROR=1 \
     trainer.method_args.scorer_trainer.optim_cfg.update_every_n_steps=5 \
     +trainer.method_args.scorer_trainer.optim_cfg.scheduler=linear \
     trainer.method_args.scorer_trainer.lambda_entropy=1 \
-    trainer.method_args.scorer_trainer.lambda_population=10 \
+    trainer.method_args.scorer_trainer.lambda_population=${scorer_pop} \
     trainer.method_args.scorer_trainer.budget=0.2 \
     trainer.method_args.scorer_trainer.lambda_l2=1
 

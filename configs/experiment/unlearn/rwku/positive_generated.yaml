@@ -1,0 +1,75 @@
+# @package _global_
+# RWKU unlearning with model-generated positive completions.
+# Uses ngiorgos/RWKU-Unlearn: forget_data for forget, retain_data (neighbors) for retain.
+
+defaults:
+  - override /model: Llama-3-8B-Instruct
+  - override /trainer: GradDiff
+  - override /data: unlearn
+  # - override /data/datasets@data.forget: RWKU_forget_positive_generated
+  - override /data/datasets@data.forget: RWKU_train_positive
+  - override /data/datasets@data.retain: RWKU_neighbor_positive
+  - override /eval: rwku
+
+model_family: llama3
+
+# Set A — celebrities to forget
+forget_subjects:
+  - "Beyoncé"
+  - "Blake Lively"
+  - "Bruce Springsteen"
+  - "Catherine, Princess of Wales"
+  - "Daniel Day-Lewis"
+  - "Donald Trump"
+  - "Dr. Dre"
+  - "Elon Musk"
+  - "Jennifer Lopez"
+  - "Jeff Goldblum"
+
+# Set B — celebrities to retain (MIA holdout reference)
+retain_subjects:
+  - "Evel Knievel"
+  - "Franklin D. Roosevelt"
+  - "Grace Kelly"
+  - "Halle Berry"
+  - "Henry Winkler"
+  - "Ice Cube"
+  - "James Earl Jones"
+  - "Jeff Bridges"
+  - "Jay-Z"
+  - "Jimmy Carter"
+
+model:
+  model_args:
+    pretrained_model_name_or_path: meta-llama/Meta-Llama-3-8B-Instruct
+
+data:
+  anchor: forget
+  forget:
+    # RWKU_forget_positive_generated:
+    RWKU_train_positive:
+      args:
+        hf_args:
+          filter_column: "subject"
+          filter_values: ${forget_subjects}
+  retain:
+    RWKU_neighbor_positive:
+      args: {}
+
+eval:
+  rwku:
+    overwrite: true
+    forget_subjects: ${forget_subjects}
+    retain_subjects: ${retain_subjects}
+
+trainer:
+  args:
+    warmup_epochs: 1.0 # custom parameter
+    learning_rate: 1e-6
+    weight_decay: 0.01
+    per_device_train_batch_size: 2
+    gradient_accumulation_steps: 8
+    num_train_epochs: 10
+    # lr_scheduler_type: constant
+
+task_name: ???

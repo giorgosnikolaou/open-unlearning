@@ -1,0 +1,9 @@
+defaults:
+  - HardScoredGradDiff
+
+method_args:
+  scoring_method: seul
+  scoring_args:
+    alpha: null          # adaptive threshold (mean + k*std)
+    k: 0.0
+    span_distance: 2

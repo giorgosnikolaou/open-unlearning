@@ -5,14 +5,14 @@ Attack implementations.
 from transformers import AutoModelForCausalLM
 
 from evals.metrics.base import unlearning_metric
-from evals.metrics.mia.loss import LOSSAttack
+from evals.metrics.mia.loss import LOSSAttack, TotalLOSSAttack
 from evals.metrics.mia.min_k import MinKProbAttack
 from evals.metrics.mia.min_k_plus_plus import MinKPlusPlusAttack
 from evals.metrics.mia.gradnorm import GradNormAttack
 from evals.metrics.mia.zlib import ZLIBAttack
 from evals.metrics.mia.reference import ReferenceAttack
 
-from evals.metrics.mia.utils import mia_auc
+from evals.metrics.mia.utils import mia_auc, mia_raw
 import logging
 
 logger = logging.getLogger("metrics")
@@ -77,6 +77,17 @@ def mia_zlib(model, **kwargs):
         collator=kwargs["collators"],
         batch_size=kwargs["batch_size"],
         tokenizer=kwargs.get("tokenizer"),
+    )
+
+
+@unlearning_metric(name="mia_raw_loss")
+def mia_raw_loss(model, **kwargs):
+    return mia_raw(
+        TotalLOSSAttack,
+        model,
+        data=kwargs["data"],
+        collator=kwargs["collators"],
+        batch_size=kwargs["batch_size"],
     )
 
 

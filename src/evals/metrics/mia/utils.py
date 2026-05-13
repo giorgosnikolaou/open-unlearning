@@ -68,3 +68,31 @@ def mia_auc(attack_cls, model, data, collator, batch_size, **kwargs):
     auc_value = roc_auc_score(labels, scores)
     output["auc"], output["agg_value"] = auc_value, auc_value
     return output
+
+
+def mia_raw(attack_cls, model, data, collator, batch_size, **kwargs):
+    """
+    Compute raw MIA scores as reported in the RWKU paper (Jin et al., 2024).
+
+    Returns mean score for forget set (FM) and holdout set (RM) separately.
+    Scores are negated to match the paper's convention: ll = -loss, where
+    higher values indicate stronger memorization.
+    """
+    attack_args = {
+        "model": model,
+        "collator": collator,
+        "batch_size": batch_size,
+    }
+    attack_args.update(kwargs)
+
+    output = {
+        "forget": attack_cls(data=data["forget"], **attack_args).attack(),
+        "holdout": attack_cls(data=data["holdout"], **attack_args).attack(),
+    }
+    # Positive total CE loss, matching RWKU paper Table 1 convention
+    fm = output["forget"]["agg_value"]
+    rm = output["holdout"]["agg_value"]
+    output["fm"] = fm
+    output["rm"] = rm
+    output["agg_value"] = fm - rm
+    return output

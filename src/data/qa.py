@@ -15,6 +15,8 @@ class QADataset(Dataset):
         few_shot_dataset_hf_args=None,
         max_length=512,
         predict_with_generate=False,
+        question_prefix=None,
+        system_prompt_suffix=None,
     ):
         super(QADataset, self).__init__()
         self.tokenizer = tokenizer
@@ -27,9 +29,18 @@ class QADataset(Dataset):
             self.fs_data = {}
             self.fs_data[question_key] = raw_data[question_key]
             self.fs_data[answer_key] = raw_data[answer_key]
-        self.template_args = template_args
+        self.template_args = dict(template_args)
+        if system_prompt_suffix is not None:
+            base = self.template_args.get("system_prompt")
+            if not base:
+                raise ValueError(
+                    "system_prompt_suffix requires a base system_prompt in template_args. "
+                    "Models without a system prompt (e.g. base models) cannot use this feature."
+                )
+            self.template_args["system_prompt"] = base + " " + system_prompt_suffix
         self.question_key = question_key
         self.answer_key = answer_key
+        self.question_prefix = question_prefix or ""
         self.predict_with_generate = predict_with_generate
 
     def __len__(self):
@@ -41,6 +52,8 @@ class QADataset(Dataset):
         else:
             prompt_msgs = self.fs_data[self.question_key] + [question]
             response_msgs = self.fs_data[self.answer_key] + [answer]
+        if self.question_prefix:
+            prompt_msgs[0] = self.question_prefix + prompt_msgs[0]
         tokenized_data = preprocess_chat_instance(
             self.tokenizer,
             self.template_args,
@@ -55,6 +68,7 @@ class QADataset(Dataset):
             "attention_mask": tokenized_data["attention_mask"],
             "index": index,
         }
+
         return item_dct
 
     def __getitem__(self, idx):
@@ -101,6 +115,8 @@ class ParaphraseQADataset(QADataset):
         few_shot_dataset_hf_args=None,
         max_length=512,
         predict_with_generate=False,
+        question_prefix=None,
+        system_prompt_suffix=None,
     ):
         super().__init__(
             hf_args=hf_args,
@@ -111,6 +127,8 @@ class ParaphraseQADataset(QADataset):
             few_shot_dataset_hf_args=few_shot_dataset_hf_args,
             max_length=max_length,
             predict_with_generate=predict_with_generate,
+            question_prefix=question_prefix,
+            system_prompt_suffix=system_prompt_suffix,
         )
         self.paraphrases_key = paraphrases_key
         self.num_train_paraphrases = num_train_paraphrases

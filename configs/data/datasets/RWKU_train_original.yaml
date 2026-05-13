@@ -1,0 +1,11 @@
+RWKU_train_original:
+  handler: PartitionedPretrainingDataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "train_original_passage"
+      split: "train"
+    text_key: "text"
+    partition_key: "subject"
+    # max_length: 512
+    max_length: 2048

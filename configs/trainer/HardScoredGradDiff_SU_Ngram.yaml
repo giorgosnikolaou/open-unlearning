@@ -1,0 +1,10 @@
+defaults:
+  - HardScoredGradDiff
+
+method_args:
+  scoring_method: su_ngram
+  scoring_args:
+    gamma: null            # adaptive threshold
+    k: 0.0
+    ngram_n: 3
+    context_size: 2

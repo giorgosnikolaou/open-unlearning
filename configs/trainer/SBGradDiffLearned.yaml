@@ -29,6 +29,7 @@ method_args:
     epochs: 0
     lr: 5.0e-2
     freeze_after: false
+    scorer_save_every_steps: null
 
   scorer_trainer:
     _target_: trainer.unlearn.Scorer.ScorerTrainerGradDiff

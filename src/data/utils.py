@@ -9,8 +9,11 @@ IGNORE_INDEX = -100  # TODO put in common constants
 logger = logging.getLogger("data")
 
 
-def load_hf_dataset(path, **kwargs):
+def load_hf_dataset(path, filter_column=None, filter_values=None, **kwargs):
     dataset = datasets.load_dataset(path, **kwargs)
+    if filter_column is not None and filter_values is not None:
+        filter_set = set(filter_values)
+        dataset = dataset.filter(lambda x: x[filter_column] in filter_set)
     return dataset
 
 

@@ -6,8 +6,9 @@ from data.collators import (
     DataCollatorForSupervisedDataset,
 )
 from data.unlearn import ForgetRetainDataset
-from data.pretraining import PretrainingDataset, CompletionDataset
+from data.pretraining import PretrainingDataset, CompletionDataset, PartitionedPretrainingDataset, PromptedCompletionDataset, PartitionedPromptedDataset
 from data.hf_dataset import HFDataset
+from data.rwku import RWKUDPODataset
 
 DATASET_REGISTRY: Dict[str, Any] = {}
 COLLATOR_REGISTRY: Dict[str, Any] = {}
@@ -96,9 +97,13 @@ _register_data(QADataset)
 _register_data(QAwithIdkDataset)
 _register_data(PretrainingDataset)
 _register_data(CompletionDataset)
+_register_data(PartitionedPretrainingDataset)
+_register_data(PromptedCompletionDataset)
+_register_data(PartitionedPromptedDataset)
 _register_data(QAwithAlternateDataset)
 _register_data(ParaphraseQADataset)
 _register_data(HFDataset)
+_register_data(RWKUDPODataset)
 
 # Register composite datasets used in unlearning
 # groups: unlearn

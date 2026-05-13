@@ -29,6 +29,7 @@ judge:
   fix_qwen_keys: false  # Fix common LLM typo: 'ans_q_wen' -> 'ans_q_qwen'
   substring_heuristic: false  # Override verdict to YES when GT ⊂ answer or answer ⊂ GT
   seed: 42  # Seed for OpenAI API calls (best-effort determinism). Set to null to disable.
+  prompt_file: null  # Custom prompt file name (e.g., "openai_rwku.txt"). Defaults to "{type}.txt".
 
 generation:
   # TODO: Maybe switch back to 128

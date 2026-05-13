@@ -106,6 +106,18 @@ PARAM_OVERRIDE_MAP: dict[str, dict[str, str]] = {
         "beta1": "trainer.method_args.beta1",
         "beta2": "trainer.method_args.beta2",
     },
+    "FUNDIAL": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "mask_type": "trainer.method_args.mask_type",
+    },
+    "SBFUNDIAL": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
     "Scorer": {
         "gamma": "trainer.method_args.gamma",
         "alpha": "trainer.method_args.alpha",
@@ -116,7 +128,141 @@ PARAM_OVERRIDE_MAP: dict[str, dict[str, str]] = {
         "lambda_l2": "trainer.method_args.scorer_trainer.lambda_l2",
         "update_every_n_steps": "trainer.method_args.scorer_trainer.optim_cfg.update_every_n_steps",
     },
+    "SBDPO": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBNPO": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBSimNPO": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "delta": "trainer.method_args.delta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBJensUn": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBWGA": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBGradDiffCorrect": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBGradDiffMatched": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBGradDiffCorrectMatched": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    # Matched variants of NPO/SimNPO/WGA/DPO share the same param schema as
+    # their base counterparts (only the trainer YAML and scorer trainer differ).
+    "SBDPOMatched": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBNPOMatched": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBSimNPOMatched": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "delta": "trainer.method_args.delta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBWGAMatched": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBGradDiffMatchedNoRetain": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_trainer.optim_cfg.lr",
+    },
+    "SBGradDiffMatchedJoint": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_lr",
+    },
+    "SBGradDiffCorrectMatchedJoint": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+        "scorer_lr": "trainer.method_args.scorer_lr",
+    },
+    # Hard-scored methods (no scorer_lr)
+    "HardScoredGradDiff_GT": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+    },
+    "HardScoredGradDiff_SEUL": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+    },
+    "HardScoredGradDiff_SU_LLM": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+    },
+    "HardScoredGradDiff_SU_Ngram": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+    },
+    "HardScoredSBGradDiff_GT": {
+        "gamma": "trainer.method_args.gamma",
+        "alpha": "trainer.method_args.alpha",
+        "beta": "trainer.method_args.beta",
+    },
 }
+
+# Hard-scored methods: pre-computed binary masks, no learned scorer
+HARD_GT_PATH = "data/gpt-selected-tokens-tofu/forget10_with_common_words_gpt"
+HARD_GT_8B_OVERRIDES = [
+    f"trainer.method_args.scoring_args.gt_path={HARD_GT_PATH}",
+]
+HARD_SU_LLM_8B_OVERRIDES = [
+    "trainer.method_args.scoring_args.ref_model_path=meta-llama/Llama-3.1-8B-Instruct",
+]
+
+SCORER_8B_OVERRIDES = [
+    "trainer.method_args.scorer.cfg.input_dimension=4096",
+    "trainer.method_args.scorer_trainer.optim_cfg.update_every_n_steps=5",
+    "+trainer.method_args.scorer_trainer.optim_cfg.scheduler=linear",
+    "trainer.method_args.scorer_trainer.lambda_entropy=1",
+    "trainer.method_args.scorer_trainer.lambda_population=15",
+    "trainer.method_args.scorer_trainer.budget=0.2",
+    "trainer.method_args.scorer_trainer.lambda_l2=1",
+]
 
 # Static per-method config: (experiment, trainer_name, extra_overrides)
 METHOD_STATIC: dict[str, tuple[str, str, list[str]]] = {
@@ -127,6 +273,20 @@ METHOD_STATIC: dict[str, tuple[str, str, list[str]]] = {
     "JensUn": ("unlearn/tofu/default", "JensUn", []),
     "WGA": ("unlearn/tofu/default", "WGA", []),
     "SatImp": ("unlearn/tofu/default", "SatImp", []),
+    "FUNDIAL": ("unlearn/tofu/default", "FUNDIAL", []),
+    "SBFUNDIAL": (
+        "unlearn/tofu/default",
+        "SBFUNDIALLearned",
+        [
+            "trainer.method_args.scorer.cfg.input_dimension=4096",
+            "trainer.method_args.scorer_trainer.optim_cfg.update_every_n_steps=5",
+            "+trainer.method_args.scorer_trainer.optim_cfg.scheduler=linear",
+            "trainer.method_args.scorer_trainer.lambda_entropy=1",
+            "trainer.method_args.scorer_trainer.lambda_population=10",
+            "trainer.method_args.scorer_trainer.budget=0.2",
+            "trainer.method_args.scorer_trainer.lambda_l2=1",
+        ],
+    ),
     "Scorer": (
         "unlearn/tofu/default",
         "SBGradDiffLearned",
@@ -140,9 +300,81 @@ METHOD_STATIC: dict[str, tuple[str, str, list[str]]] = {
             "trainer.method_args.scorer_trainer.lambda_l2=1",
         ],
     ),
+    "SBDPO": ("unlearn/tofu/idk", "SBDPOLearned", SCORER_8B_OVERRIDES),
+    "SBNPO": ("unlearn/tofu/default", "SBNPOLearned", SCORER_8B_OVERRIDES),
+    "SBSimNPO": ("unlearn/tofu/default", "SBSimNPOLearned", SCORER_8B_OVERRIDES),
+    "SBJensUn": ("unlearn/tofu/default", "SBJensUnLearned", SCORER_8B_OVERRIDES),
+    "SBWGA": ("unlearn/tofu/default", "SBWGALearned", SCORER_8B_OVERRIDES),
+    "SBGradDiffCorrect": ("unlearn/tofu/default", "SBGradDiffCorrectLearned", SCORER_8B_OVERRIDES),
+    "SBGradDiffMatched": ("unlearn/tofu/default", "SBGradDiffMatchedLearned", SCORER_8B_OVERRIDES),
+    "SBGradDiffCorrectMatched": ("unlearn/tofu/default", "SBGradDiffCorrectMatchedLearned", SCORER_8B_OVERRIDES),
+    # Matched variants of NPO/SimNPO/WGA/DPO
+    "SBDPOMatched": ("unlearn/tofu/idk", "SBDPOMatchedLearned", SCORER_8B_OVERRIDES),
+    "SBNPOMatched": ("unlearn/tofu/default", "SBNPOMatchedLearned", SCORER_8B_OVERRIDES),
+    "SBSimNPOMatched": ("unlearn/tofu/default", "SBSimNPOMatchedLearned", SCORER_8B_OVERRIDES),
+    "SBWGAMatched": ("unlearn/tofu/default", "SBWGAMatchedLearned", SCORER_8B_OVERRIDES),
+    "SBGradDiffMatchedNoRetain": ("unlearn/tofu/default", "SBGradDiffMatchedNoRetainLearned", SCORER_8B_OVERRIDES),
+    # Joint variants don't have a separate scorer optimizer — drop the
+    # update_every_n_steps / scorer_trainer.* overrides that would otherwise
+    # collide with the NoOp scorer_trainer config.
+    "SBGradDiffMatchedJoint": (
+        "unlearn/tofu/default",
+        "SBGradDiffMatchedJointLearned",
+        [
+            "trainer.method_args.scorer.cfg.input_dimension=4096",
+            "trainer.method_args.lambda_entropy=1",
+            "trainer.method_args.lambda_population=15",
+            "trainer.method_args.budget=0.2",
+            "trainer.method_args.lambda_l2=1",
+        ],
+    ),
+    "SBGradDiffCorrectMatchedJoint": (
+        "unlearn/tofu/default",
+        "SBGradDiffCorrectMatchedJointLearned",
+        [
+            "trainer.method_args.scorer.cfg.input_dimension=4096",
+            "trainer.method_args.lambda_entropy=1",
+            "trainer.method_args.lambda_population=15",
+            "trainer.method_args.budget=0.2",
+            "trainer.method_args.lambda_l2=1",
+        ],
+    ),
+    # Hard-scored methods
+    "HardScoredGradDiff_GT": ("unlearn/tofu/default", "HardScoredGradDiff", HARD_GT_8B_OVERRIDES),
+    "HardScoredGradDiff_SEUL": ("unlearn/tofu/default", "HardScoredGradDiff_SEUL", []),
+    "HardScoredGradDiff_SU_LLM": ("unlearn/tofu/default", "HardScoredGradDiff_SU_LLM", HARD_SU_LLM_8B_OVERRIDES),
+    "HardScoredGradDiff_SU_Ngram": ("unlearn/tofu/default", "HardScoredGradDiff_SU_Ngram", []),
+    "HardScoredSBGradDiff_GT": ("unlearn/tofu/default", "HardScoredSBGradDiff", HARD_GT_8B_OVERRIDES),
 }
 
 ALL_METHODS = list(METHOD_STATIC.keys())
+
+# Per-method source summary override (when different from --source-summary default)
+SB_SOURCE = "hyperparam/tofu_forget10/sb_bayesian_summary.json"
+METHOD_SOURCE_OVERRIDE: dict[str, str] = {
+    "SBDPO": SB_SOURCE,
+    "SBNPO": SB_SOURCE,
+    "SBSimNPO": SB_SOURCE,
+    "SBJensUn": SB_SOURCE,
+    "SBWGA": SB_SOURCE,
+    "SBGradDiffCorrect": SB_SOURCE,
+    "SBGradDiffMatched": SB_SOURCE,
+    "SBGradDiffCorrectMatched": SB_SOURCE,
+    "SBDPOMatched": SB_SOURCE,
+    "SBNPOMatched": SB_SOURCE,
+    "SBSimNPOMatched": SB_SOURCE,
+    "SBWGAMatched": SB_SOURCE,
+    "SBGradDiffMatchedNoRetain": SB_SOURCE,
+    "SBGradDiffMatchedJoint": SB_SOURCE,
+    "SBGradDiffCorrectMatchedJoint": SB_SOURCE,
+    "SBFUNDIAL": SB_SOURCE,
+    # Hard-scored methods (also stored in SB summary)
+    "HardScoredGradDiff_GT": SB_SOURCE,
+    "HardScoredGradDiff_SEUL": SB_SOURCE,
+    "HardScoredGradDiff_SU_LLM": SB_SOURCE,
+    "HardScoredGradDiff_SU_Ngram": SB_SOURCE,
+    "HardScoredSBGradDiff_GT": SB_SOURCE,
+}
 
 # ─────────────────────────────────────────────────────────────────────
 # Helpers
@@ -400,7 +632,8 @@ def main():
 
     for method in args.methods:
         # Load source params and build fixed overrides
-        best_params = load_source_params(args.source_summary, method)
+        source = METHOD_SOURCE_OVERRIDE.get(method, args.source_summary)
+        best_params = load_source_params(source, method)
         source_lr = best_params.get("lr", DEFAULT_LR_MIN * 10)
         fixed_overrides = build_fixed_overrides(method, best_params)
         experiment, trainer_name, extra_overrides = METHOD_STATIC[method]
@@ -430,10 +663,12 @@ def main():
             except KeyError:
                 pass
 
+        sampler = optuna.samplers.TPESampler(seed=42)
+
         study = optuna.create_study(
             study_name=study_name,
             direction=OBJECTIVE_DIRECTION,
-            sampler=optuna.samplers.TPESampler(seed=42),
+            sampler=sampler,
             storage=storage,
             load_if_exists=args.resume,
         )
@@ -443,6 +678,17 @@ def main():
             if t.state == optuna.trial.TrialState.COMPLETE
         ]
         n_completed = len(completed)
+
+        # Advance sampler RNG past already-completed trials to avoid
+        # duplicate suggestions when resuming a preempted job.
+        if n_completed > 0:
+            burn_study = optuna.create_study(
+                direction=OBJECTIVE_DIRECTION,
+                sampler=sampler,
+            )
+            for t in sorted(completed, key=lambda t: t.number):
+                dummy = burn_study.ask()
+                burn_study.tell(dummy, t.value if t.value is not None else 0.0)
 
         if n_completed == 0:
             # Enqueue source lr as initial trial, clamped to search range

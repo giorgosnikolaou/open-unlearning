@@ -1,0 +1,10 @@
+RWKU_train_refusal:
+  handler: QADataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "train_refusal_llama3"
+      split: "train"
+    question_key: "instruction"
+    answer_key: "output"
+    max_length: 512

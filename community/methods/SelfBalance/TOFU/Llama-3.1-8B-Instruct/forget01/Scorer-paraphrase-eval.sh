@@ -12,6 +12,11 @@ retain_split="retain99"
 holdout_split="holdout01"
 
 task_name="SB_TOFU/${model}/${forget_split}/Scorer"
+
+scorer_lr=0.05
+scorer_pop=15
+task_name="Learned/Optimal_slr_${scorer_lr}/ScorerForget01"
+
 model_output="saves/unlearn/${task_name}"
 winrate_baseline="saves/eval/SB_TOFU/${model}/baselines/${retain_split}_${forget_split}/paraphrase_evals/repetitiveness/model.jsonl"
 

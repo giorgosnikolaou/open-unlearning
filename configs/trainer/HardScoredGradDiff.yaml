@@ -1,0 +1,18 @@
+defaults:
+  - finetune
+
+handler: HardScoredGradDiff
+
+method_args:
+  alpha: 1.0
+  gamma: 1.0
+  scoring_method: gt        # gt | seul | su_llm | su_ngram
+  scoring_args:
+    gt_path: null            # path to Arrow dataset dir with target_words (for gt)
+    # alpha: -5.0            # explicit threshold (for seul); null -> adaptive
+    # gamma: 0.5             # explicit threshold (for su); null -> adaptive
+    # k: 0.0                 # adaptive threshold multiplier: mean + k*std
+    # span_distance: 2       # gap-filling distance (for seul)
+    # context_size: 2        # context expansion size (for su)
+    # ngram_n: 3             # n-gram order (for su_ngram)
+    # ref_model_path: null   # HF path to base/pretrained model (for su_llm)

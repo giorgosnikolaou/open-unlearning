@@ -1,0 +1,5 @@
+defaults:
+  - FUNDIAL
+
+method_args:
+  mask_type: entity

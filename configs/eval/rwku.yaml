@@ -1,0 +1,26 @@
+# @package eval.rwku
+defaults:
+  - rwku_metrics:
+    - forget_level1_ROUGE
+    - forget_level2_ROUGE
+    - forget_level3_ROUGE
+    - neighbor_level1_ROUGE
+    - neighbor_level2_ROUGE
+    # - mia_loss
+    # - mia_min_k
+    # - mia_min_k_plus_plus
+    # - mia_zlib
+    - mia_raw_loss
+    - fluency
+
+handler: RWKUEvaluator
+
+output_dir: ${paths.output_dir}
+metrics: {}
+overwrite: false
+batch_size: 16
+
+# Subjects to evaluate — set in experiment config or CLI.
+# null = all 200 celebrities (no filtering).
+forget_subjects: null
+retain_subjects: null

@@ -1,0 +1,43 @@
+# @package _global_
+
+defaults:
+  - override /model: Llama-3-8B-Instruct
+  - override /eval: rwku
+
+# Set A — celebrities to forget
+forget_subjects:
+  - "Beyoncé"
+  - "Blake Lively"
+  - "Bruce Springsteen"
+  - "Catherine, Princess of Wales"
+  - "Daniel Day-Lewis"
+  - "Donald Trump"
+  - "Dr. Dre"
+  - "Elon Musk"
+  - "Jennifer Lopez"
+  - "Jeff Goldblum"
+
+# Set B — celebrities to retain (MIA holdout reference)
+retain_subjects:
+  - "Evel Knievel"
+  - "Franklin D. Roosevelt"
+  - "Grace Kelly"
+  - "Halle Berry"
+  - "Henry Winkler"
+  - "Ice Cube"
+  - "James Earl Jones"
+  - "Jeff Bridges"
+  - "Jay-Z"
+  - "Jimmy Carter"
+
+model:
+  model_args:
+    pretrained_model_name_or_path: meta-llama/Meta-Llama-3-8B-Instruct
+
+eval:
+  rwku:
+    overwrite: false
+    forget_subjects: ${forget_subjects}
+    retain_subjects: ${retain_subjects}
+
+task_name: ???

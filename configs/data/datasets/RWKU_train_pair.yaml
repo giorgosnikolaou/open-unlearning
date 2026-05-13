@@ -1,0 +1,11 @@
+RWKU_train_pair:
+  handler: RWKUDPODataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "train_pair_llama3"
+      split: "train"
+    prompt_key: "prompt"
+    response_key: "response"
+    intro_key: "intro"
+    max_length: 512

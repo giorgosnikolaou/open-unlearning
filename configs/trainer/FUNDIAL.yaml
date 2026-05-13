@@ -1,0 +1,15 @@
+defaults:
+  - finetune
+
+handler: FUNDIAL # Focused UNDIAL — UNDIAL with spaCy noun/entity token masks
+args: # HuggingFace TrainingArguments
+  learning_rate: 1e-4
+  num_train_epochs: 10
+method_args: # Your own method-specific arguments
+  gamma: 1.0
+  alpha: 0.0
+  beta: 10.0 # the strength of penalty for memorized tokens
+  retain_loss_type: NLL
+  mask_type: noun # noun | entity
+  spacy_model: en_core_web_sm
+  empty_mask_fallback: zero # zero | uniform

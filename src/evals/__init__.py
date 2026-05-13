@@ -4,6 +4,7 @@ from evals.tofu import TOFUEvaluator
 from evals.muse import MUSEEvaluator
 from evals.lm_eval import LMEvalEvaluator
 from evals.paraphrase import ParaphraseEvaluator
+from evals.rwku import RWKUEvaluator
 
 EVALUATOR_REGISTRY: Dict[str, Any] = {}
 
@@ -35,3 +36,4 @@ _register_evaluator(TOFUEvaluator)
 _register_evaluator(MUSEEvaluator)
 _register_evaluator(LMEvalEvaluator)
 _register_evaluator(ParaphraseEvaluator)
+_register_evaluator(RWKUEvaluator)

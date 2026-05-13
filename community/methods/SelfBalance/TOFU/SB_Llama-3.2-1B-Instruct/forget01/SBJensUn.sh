@@ -1,0 +1,72 @@
+#!/bin/bash
+# SBJensUn — Unlearn (TOFU)
+# Model: Llama-3.2-1B-Instruct | Split: forget01/retain99
+
+set -a
+source .env
+set +a
+
+export MASTER_PORT=$(python -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")
+
+model="Llama-3.2-1B-Instruct"
+forget_split="forget01"
+retain_split="retain99"
+num_epochs=10
+batch_size=8
+grad_accum=4
+
+# ── HP search summary (override with SB_SUMMARY_JSON env var) ──
+SB_SUMMARY_JSON="${SB_SUMMARY_JSON:-hyperparam/tofu_forget10/sb_bayesian_summary.json}"
+
+get_param() {
+    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.argv[2]]['best_params'][sys.argv[3]])" \
+        "$SB_SUMMARY_JSON" "$1" "$2"
+}
+
+# ── Hyperparameters (override via env vars) ──
+SBJensUn_lr=${SBJensUn_lr:-$(get_param SBJensUn lr)}
+SBJensUn_gamma=${SBJensUn_gamma:-$(get_param SBJensUn gamma)}
+SBJensUn_alpha=${SBJensUn_alpha:-$(get_param SBJensUn alpha)}
+SBJensUn_scorer_lr=${SBJensUn_scorer_lr:-$(get_param SBJensUn scorer_lr)}
+
+task_name="SB_TOFU/${model}/forget01/SBJensUn"
+model_output="saves/unlearn/${task_name}"
+
+# ══════════════════════════════════════════
+#  1. Unlearn
+# ══════════════════════════════════════════
+echo ""
+echo "============================================"
+echo " SBJensUn — Unlearn (forget01)"
+echo "============================================"
+
+HYDRA_FULL_ERROR=1 \
+    python \
+    src/train.py --config-name=unlearn.yaml \
+    experiment=unlearn/tofu/default \
+    trainer=SBJensUnLearned \
+    model=$model \
+    task_name=$task_name \
+    model.model_args.pretrained_model_name_or_path=open-unlearning/tofu_${model}_full \
+    +model.model_args.token=$HF_TOKEN \
+    +model.tokenizer_args.token=$HF_TOKEN \
+    ++model.model_args.device_map='auto' \
+    forget_split=$forget_split \
+    retain_split=$retain_split \
+    trainer.args.num_train_epochs=$num_epochs \
+    trainer.args.eval_on_start=false \
+    trainer.args.eval_strategy=no \
+    trainer.args.gradient_checkpointing=True \
+    trainer.args.per_device_train_batch_size=$batch_size \
+    trainer.args.gradient_accumulation_steps=$grad_accum \
+    trainer.args.learning_rate=$SBJensUn_lr \
+    trainer.method_args.gamma=$SBJensUn_gamma \
+    trainer.method_args.alpha=$SBJensUn_alpha \
+    trainer.method_args.scorer.cfg.input_dimension=2048 \
+    trainer.method_args.scorer_trainer.optim_cfg.update_every_n_steps=5 \
+    +trainer.method_args.scorer_trainer.optim_cfg.scheduler=linear \
+    trainer.method_args.scorer_trainer.optim_cfg.lr=$SBJensUn_scorer_lr \
+    trainer.method_args.scorer_trainer.lambda_entropy=1 \
+    trainer.method_args.scorer_trainer.lambda_population=10 \
+    trainer.method_args.scorer_trainer.budget=0.2 \
+    trainer.method_args.scorer_trainer.lambda_l2=1

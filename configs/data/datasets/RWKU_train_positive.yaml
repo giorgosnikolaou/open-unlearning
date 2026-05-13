@@ -1,0 +1,10 @@
+RWKU_train_positive:
+  handler: PartitionedPretrainingDataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "train_positive_llama3"
+      split: "train"
+    text_key: "text"
+    partition_key: "subject"
+    max_length: 2048

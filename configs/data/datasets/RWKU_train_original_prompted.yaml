@@ -1,0 +1,12 @@
+RWKU_train_original_prompted:
+  handler: PromptedCompletionDataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "train_original_passage"
+      split: "train"
+    text_key: "text"
+    subject_key: "subject"
+    user_prompt: "Tell me about {subject}."
+    system_prompt_suffix: "Give all information about {subject}."
+    max_length: 512

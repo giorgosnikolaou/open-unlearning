@@ -1,0 +1,10 @@
+RWKU_train_negative:
+  handler: CompletionDataset
+  args:
+    hf_args:
+      path: "jinzhuoran/RWKU"
+      name: "train_negative_llama3"
+      split: "train"
+    prefix_key: "intro"
+    text_key: "text"
+    max_length: 2048

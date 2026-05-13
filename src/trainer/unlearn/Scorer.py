@@ -25,7 +25,7 @@ from transformers import PreTrainedModel
 
 from data.Cache import Cache
 from scorers.base import TokenImportanceScorer
-from trainer.utils import reweighted_NLL, reweighted_softmax_NLL
+from trainer.utils import reweighted_NLL, reweighted_NLL_correct, reweighted_softmax_NLL
 
 Model = nn.Module
 
@@ -36,6 +36,12 @@ __all__ = [
     'ScorerTrainerGradDiffSpread',
     'ScorerTrainerGradDiffSoftmaxSpread',
     'ScorerTrainerProjected',
+    'ScorerTrainerSBDPO',
+    'ScorerTrainerSBGradDiff',
+    'ScorerTrainerSBGradDiffCorrect',
+    'ScorerTrainerSBNPO',
+    'ScorerTrainerSBSimNPO',
+    'ScorerTrainerSBWGA',
     'ScorerTrainerTIDPO',
 ]
 
@@ -436,6 +442,508 @@ class ScorerTrainerGradDiff(ScorerTrainer):
 
         return loss
 
+
+
+class ScorerTrainerSBGradDiff(ScorerTrainer):
+    """Matched-objective scorer trainer for SelfBalancingGradDiff.
+
+    Forget objective: -g * sat(g*nll) * nll via reweighted_NLL(beta).
+    No retain term. Same penalties as ScorerTrainerGradDiff.
+    """
+
+    def __init__(
+        self,
+        lambda_entropy: float = 1.0,
+        lambda_population: float = 1.0,
+        budget: float = 0.3,
+        lambda_l2: float = 0.01,
+        beta: float = 5.0,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.lambda_entropy = lambda_entropy
+        self.lambda_population = lambda_population
+        self.budget = budget
+        self.lambda_l2 = lambda_l2
+        self.beta = beta
+
+    def _entropy_loss(
+        self,
+        scores: torch.Tensor,
+        mask: torch.Tensor,
+        epsilon: float = 1e-6,
+    ):
+        scores = scores.clone()[mask]
+        g = scores.clamp(epsilon, 1 - epsilon)
+        entropy = -(g * g.log() + (1 - g) * (1 - g).log())
+        return entropy.mean()
+
+    def _population_loss(
+        self,
+        scores: torch.Tensor,
+        mask: torch.Tensor,
+        budget: float = 0.2,
+    ):
+        hard = (scores > 0.5).float()
+        selected = hard.detach() - scores.detach() + scores
+        selected = selected * mask.float()
+        seq_counts = mask.sum(dim=1).clamp(min=1)
+        seq_means = selected.sum(dim=1) / seq_counts
+        return ((seq_means - budget) ** 2).mean()
+
+    def _l2_loss(self) -> torch.Tensor:
+        return sum(p.pow(2).sum() for p in self.scorer.parameters())  # type: ignore
+
+    def compute_loss(
+        self,
+        forget_cache: Cache,
+        retain_cache: Cache,
+    ):
+        forget_loss, f_scores, f_mask = reweighted_NLL(
+            cache=forget_cache,
+            scorer=self.scorer,
+            scorer_requires_grad=True,
+            beta=self.beta,
+        )
+        forget_loss = -forget_loss
+
+        forget_entropy = self._entropy_loss(f_scores, f_mask)
+        forget_population = self._population_loss(f_scores, f_mask, budget=self.budget)
+        l2 = self._l2_loss()
+
+        loss = (
+            forget_loss
+            + self.lambda_entropy * forget_entropy
+            + self.lambda_population * forget_population
+            + self.lambda_l2 * l2
+        )
+
+        logger.info(
+            "forget=%.3f f_entropy=%.3f f_budget=%.3f l2=%.3f total=%.3f",
+            forget_loss.item(), forget_entropy.item(), forget_population.item(),
+            l2.item(), loss.item(),
+        )
+
+        self._log_scores(f_scores, f_mask, prefix="forget ")
+
+        if self.optim_cfg.loss_reduction == "mean":
+            loss = loss / self.effective_batches
+
+        return loss
+
+
+class ScorerTrainerSBGradDiffCorrect(ScorerTrainer):
+    """Matched-objective scorer trainer for SBGradDiffCorrect.
+
+    Forget objective: -sat(nll) * g * nll via reweighted_NLL_correct(beta).
+    Otherwise identical to ScorerTrainerSBGradDiff.
+    """
+
+    def __init__(
+        self,
+        lambda_entropy: float = 1.0,
+        lambda_population: float = 1.0,
+        budget: float = 0.3,
+        lambda_l2: float = 0.01,
+        beta: float = 5.0,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.lambda_entropy = lambda_entropy
+        self.lambda_population = lambda_population
+        self.budget = budget
+        self.lambda_l2 = lambda_l2
+        self.beta = beta
+
+    def _entropy_loss(
+        self,
+        scores: torch.Tensor,
+        mask: torch.Tensor,
+        epsilon: float = 1e-6,
+    ):
+        scores = scores.clone()[mask]
+        g = scores.clamp(epsilon, 1 - epsilon)
+        entropy = -(g * g.log() + (1 - g) * (1 - g).log())
+        return entropy.mean()
+
+    def _population_loss(
+        self,
+        scores: torch.Tensor,
+        mask: torch.Tensor,
+        budget: float = 0.2,
+    ):
+        hard = (scores > 0.5).float()
+        selected = hard.detach() - scores.detach() + scores
+        selected = selected * mask.float()
+        seq_counts = mask.sum(dim=1).clamp(min=1)
+        seq_means = selected.sum(dim=1) / seq_counts
+        return ((seq_means - budget) ** 2).mean()
+
+    def _l2_loss(self) -> torch.Tensor:
+        return sum(p.pow(2).sum() for p in self.scorer.parameters())  # type: ignore
+
+    def compute_loss(
+        self,
+        forget_cache: Cache,
+        retain_cache: Cache,
+    ):
+        forget_loss, f_scores, f_mask = reweighted_NLL_correct(
+            cache=forget_cache,
+            scorer=self.scorer,
+            scorer_requires_grad=True,
+            beta=self.beta,
+        )
+        forget_loss = -forget_loss
+
+        forget_entropy = self._entropy_loss(f_scores, f_mask)
+        forget_population = self._population_loss(f_scores, f_mask, budget=self.budget)
+        l2 = self._l2_loss()
+
+        loss = (
+            forget_loss
+            + self.lambda_entropy * forget_entropy
+            + self.lambda_population * forget_population
+            + self.lambda_l2 * l2
+        )
+
+        logger.info(
+            "forget=%.3f f_entropy=%.3f f_budget=%.3f l2=%.3f total=%.3f",
+            forget_loss.item(), forget_entropy.item(), forget_population.item(),
+            l2.item(), loss.item(),
+        )
+
+        self._log_scores(f_scores, f_mask, prefix="forget ")
+
+        if self.optim_cfg.loss_reduction == "mean":
+            loss = loss / self.effective_batches
+
+        return loss
+
+
+class _SBScoredMatchedMixin:
+    """Shared regularizer helpers for matched-objective scorer trainers.
+
+    Mirrors the helpers on ScorerTrainerSBGradDiff so the new NPO/SimNPO/WGA
+    matched trainers can reuse them without duplication.
+    """
+
+    def _entropy_loss(
+        self,
+        scores: torch.Tensor,
+        mask: torch.Tensor,
+        epsilon: float = 1e-6,
+    ):
+        scores = scores.clone()[mask]
+        g = scores.clamp(epsilon, 1 - epsilon)
+        entropy = -(g * g.log() + (1 - g) * (1 - g).log())
+        return entropy.mean()
+
+    def _population_loss(
+        self,
+        scores: torch.Tensor,
+        mask: torch.Tensor,
+        budget: float = 0.2,
+    ):
+        hard = (scores > 0.5).float()
+        selected = hard.detach() - scores.detach() + scores
+        selected = selected * mask.float()
+        seq_counts = mask.sum(dim=1).clamp(min=1)
+        seq_means = selected.sum(dim=1) / seq_counts
+        return ((seq_means - budget) ** 2).mean()
+
+    def _l2_loss(self) -> torch.Tensor:
+        return sum(p.pow(2).sum() for p in self.scorer.parameters())  # type: ignore
+
+
+class ScorerTrainerSBNPO(_SBScoredMatchedMixin, ScorerTrainer):
+    """Matched-objective scorer trainer for SelfBalancingNPO.
+
+    Forget objective: -2/β · logsigmoid(β · (lose_scored_nll - lose_ref_nll)).mean()
+    where lose_scored_nll uses scorer scores with rescale (matches main NPO loss).
+    Requires `forget_cache.ref_nll` set by the main trainer (per-sequence ref NLL).
+    """
+
+    def __init__(
+        self,
+        lambda_entropy: float = 1.0,
+        lambda_population: float = 1.0,
+        budget: float = 0.3,
+        lambda_l2: float = 0.01,
+        beta: float = 0.1,
+        score_scale: float = 2.0,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.lambda_entropy = lambda_entropy
+        self.lambda_population = lambda_population
+        self.budget = budget
+        self.lambda_l2 = lambda_l2
+        self.beta = beta
+        self.score_scale = score_scale
+
+    def compute_loss(
+        self,
+        forget_cache: Cache,
+        retain_cache: Cache,
+    ):
+        ref_nll = getattr(forget_cache, "ref_nll", None)
+        if ref_nll is None:
+            raise RuntimeError(
+                "ScorerTrainerSBNPO requires `forget_cache.ref_nll` to be set by "
+                "the main trainer (SelfBalancingNPO must hoist lose_ref_nll before scorer step)."
+            )
+
+        with torch.enable_grad():
+            scores, mask = self.scorer.score(forget_cache)
+
+        weights = self.score_scale * scores
+        seq_lengths = mask.sum(dim=-1, keepdim=True).float().clamp(min=1)
+        weight_sums = (weights * mask.float()).sum(dim=-1, keepdim=True).clamp(min=1e-8)
+        weights = weights * (seq_lengths / weight_sums)
+        weighted = forget_cache.token_loss.detach() * weights * mask.float()
+        lose_scored_nll = weighted.sum(dim=-1)
+
+        forget_loss = -2 / self.beta * F.logsigmoid(
+            self.beta * (lose_scored_nll - ref_nll)
+        ).mean()
+
+        forget_entropy = self._entropy_loss(scores, mask)
+        forget_population = self._population_loss(scores, mask, budget=self.budget)
+        l2 = self._l2_loss()
+
+        loss = (
+            forget_loss
+            + self.lambda_entropy * forget_entropy
+            + self.lambda_population * forget_population
+            + self.lambda_l2 * l2
+        )
+
+        logger.info(
+            "forget=%.3f f_entropy=%.3f f_budget=%.3f l2=%.3f total=%.3f",
+            forget_loss.item(), forget_entropy.item(), forget_population.item(),
+            l2.item(), loss.item(),
+        )
+
+        self._log_scores(scores, mask, prefix="forget ")  # type: ignore[attr-defined]
+
+        if self.optim_cfg.loss_reduction == "mean":
+            loss = loss / self.effective_batches
+
+        return loss
+
+
+class ScorerTrainerSBDPO(_SBScoredMatchedMixin, ScorerTrainer):
+    """Matched-objective scorer trainer for SelfBalancingDPO.
+
+    Forget objective: -2/β · logsigmoid(β · (win_log_ratio - lose_log_ratio)).mean()
+    where lose_log_ratio = -(lose_scored_nll - lose_ref_nll) carries scorer grad
+    via lose_scored_nll, while win_log_ratio is treated as a constant offset.
+    Requires `forget_cache.ref_nll` and `forget_cache.win_log_ratio` set by the
+    main trainer.
+    """
+
+    def __init__(
+        self,
+        lambda_entropy: float = 1.0,
+        lambda_population: float = 1.0,
+        budget: float = 0.3,
+        lambda_l2: float = 0.01,
+        beta: float = 0.1,
+        score_scale: float = 2.0,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.lambda_entropy = lambda_entropy
+        self.lambda_population = lambda_population
+        self.budget = budget
+        self.lambda_l2 = lambda_l2
+        self.beta = beta
+        self.score_scale = score_scale
+
+    def compute_loss(
+        self,
+        forget_cache: Cache,
+        retain_cache: Cache,
+    ):
+        ref_nll = getattr(forget_cache, "ref_nll", None)
+        win_log_ratio = getattr(forget_cache, "win_log_ratio", None)
+        if ref_nll is None or win_log_ratio is None:
+            raise RuntimeError(
+                "ScorerTrainerSBDPO requires `forget_cache.ref_nll` and "
+                "`forget_cache.win_log_ratio` to be set by the main trainer "
+                "(SelfBalancingDPO must hoist both before scorer step)."
+            )
+
+        with torch.enable_grad():
+            scores, mask = self.scorer.score(forget_cache)
+
+        weights = self.score_scale * scores
+        seq_lengths = mask.sum(dim=-1, keepdim=True).float().clamp(min=1)
+        weight_sums = (weights * mask.float()).sum(dim=-1, keepdim=True).clamp(min=1e-8)
+        weights = weights * (seq_lengths / weight_sums)
+        weighted = forget_cache.token_loss.detach() * weights * mask.float()
+        lose_scored_nll = weighted.sum(dim=-1)
+
+        lose_log_ratio = -(lose_scored_nll - ref_nll)
+        forget_loss = -2 / self.beta * F.logsigmoid(
+            self.beta * (win_log_ratio - lose_log_ratio)
+        ).mean()
+
+        forget_entropy = self._entropy_loss(scores, mask)
+        forget_population = self._population_loss(scores, mask, budget=self.budget)
+        l2 = self._l2_loss()
+
+        loss = (
+            forget_loss
+            + self.lambda_entropy * forget_entropy
+            + self.lambda_population * forget_population
+            + self.lambda_l2 * l2
+        )
+
+        logger.info(
+            "forget=%.3f f_entropy=%.3f f_budget=%.3f l2=%.3f total=%.3f",
+            forget_loss.item(), forget_entropy.item(), forget_population.item(),
+            l2.item(), loss.item(),
+        )
+
+        self._log_scores(scores, mask, prefix="forget ")  # type: ignore[attr-defined]
+
+        if self.optim_cfg.loss_reduction == "mean":
+            loss = loss / self.effective_batches
+
+        return loss
+
+
+class ScorerTrainerSBSimNPO(_SBScoredMatchedMixin, ScorerTrainer):
+    """Matched-objective scorer trainer for SelfBalancingSimNPO.
+
+    Forget objective: -2/β · logsigmoid(β · (scored_nll/seq_len - δ)).mean()
+    where scored_nll is the unrescaled per-sequence scored NLL.
+    """
+
+    def __init__(
+        self,
+        lambda_entropy: float = 1.0,
+        lambda_population: float = 1.0,
+        budget: float = 0.3,
+        lambda_l2: float = 0.01,
+        beta: float = 4.5,
+        delta: float = 0.0,
+        score_scale: float = 2.0,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.lambda_entropy = lambda_entropy
+        self.lambda_population = lambda_population
+        self.budget = budget
+        self.lambda_l2 = lambda_l2
+        self.beta = beta
+        self.delta = delta
+        self.score_scale = score_scale
+
+    def compute_loss(
+        self,
+        forget_cache: Cache,
+        retain_cache: Cache,
+    ):
+        with torch.enable_grad():
+            scores, mask = self.scorer.score(forget_cache)
+
+        weights = self.score_scale * scores
+        weighted = forget_cache.token_loss.detach() * weights * mask.float()
+        scored_nll = weighted.sum(dim=-1)
+        seq_lengths = mask.sum(dim=-1).float().clamp(min=1)
+
+        forget_loss = scored_nll / seq_lengths - self.delta
+        forget_loss = -F.logsigmoid(self.beta * forget_loss).mean() * 2 / self.beta
+
+        forget_entropy = self._entropy_loss(scores, mask)
+        forget_population = self._population_loss(scores, mask, budget=self.budget)
+        l2 = self._l2_loss()
+
+        loss = (
+            forget_loss
+            + self.lambda_entropy * forget_entropy
+            + self.lambda_population * forget_population
+            + self.lambda_l2 * l2
+        )
+
+        logger.info(
+            "forget=%.3f f_entropy=%.3f f_budget=%.3f l2=%.3f total=%.3f",
+            forget_loss.item(), forget_entropy.item(), forget_population.item(),
+            l2.item(), loss.item(),
+        )
+
+        self._log_scores(scores, mask, prefix="forget ")  # type: ignore[attr-defined]
+
+        if self.optim_cfg.loss_reduction == "mean":
+            loss = loss / self.effective_batches
+
+        return loss
+
+
+class ScorerTrainerSBWGA(_SBScoredMatchedMixin, ScorerTrainer):
+    """Matched-objective scorer trainer for SelfBalancingWGA.
+
+    Forget objective: -(exp(-nll)^(β · score_scale · g) · nll)[mask].mean()
+    Same formula as compute_scored_wga_loss but with grad flowing through `g`.
+    """
+
+    def __init__(
+        self,
+        lambda_entropy: float = 1.0,
+        lambda_population: float = 1.0,
+        budget: float = 0.3,
+        lambda_l2: float = 0.01,
+        beta: float = 1.0,
+        score_scale: float = 2.0,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.lambda_entropy = lambda_entropy
+        self.lambda_population = lambda_population
+        self.budget = budget
+        self.lambda_l2 = lambda_l2
+        self.beta = beta
+        self.score_scale = score_scale
+
+    def compute_loss(
+        self,
+        forget_cache: Cache,
+        retain_cache: Cache,
+    ):
+        with torch.enable_grad():
+            scores, mask = self.scorer.score(forget_cache)
+
+        token_loss = forget_cache.token_loss.detach()
+        weight_ce = ((-token_loss).exp().detach()) ** (
+            self.beta * self.score_scale * scores
+        )
+        forget_loss = -(weight_ce * token_loss)[mask].mean()
+
+        forget_entropy = self._entropy_loss(scores, mask)
+        forget_population = self._population_loss(scores, mask, budget=self.budget)
+        l2 = self._l2_loss()
+
+        loss = (
+            forget_loss
+            + self.lambda_entropy * forget_entropy
+            + self.lambda_population * forget_population
+            + self.lambda_l2 * l2
+        )
+
+        logger.info(
+            "forget=%.3f f_entropy=%.3f f_budget=%.3f l2=%.3f total=%.3f",
+            forget_loss.item(), forget_entropy.item(), forget_population.item(),
+            l2.item(), loss.item(),
+        )
+
+        self._log_scores(scores, mask, prefix="forget ")  # type: ignore[attr-defined]
+
+        if self.optim_cfg.loss_reduction == "mean":
+            loss = loss / self.effective_batches
+
+        return loss
 
 
 class ScorerTrainerTIDPO(ScorerTrainer):

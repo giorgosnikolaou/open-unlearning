@@ -1,0 +1,10 @@
+RWKU_retain_passage:
+  handler: PartitionedPromptedDataset
+  args:
+    hf_args:
+      path: "ngiorgos/RWKU"
+      name: "retain_data"
+      split: "train"
+    text_key: "passage"
+    partition_key: "subject"
+    max_length: 2048

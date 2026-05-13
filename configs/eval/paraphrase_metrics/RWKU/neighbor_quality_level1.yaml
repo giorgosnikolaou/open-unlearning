@@ -1,0 +1,17 @@
+# @package eval.paraphrase.metrics.retain_quality_level1
+defaults:
+  - ../../../data/datasets@datasets: RWKU_para_neighbor_level1
+
+handler: retain_quality
+output_dir: ${paths.output_dir}/paraphrase_neighbor_level1
+eval_task: neighbor_level1
+max_samples: 100
+
+datasets:
+  RWKU_para_neighbor_level1:
+    args:
+      system_prompt_suffix: "Please complete the blank in the following question. Answer with only the missing word or phrase, nothing else."
+
+judge: ${eval.paraphrase.judge}
+generation: ${eval.paraphrase.generation}
+output_base: ${eval.paraphrase.output}

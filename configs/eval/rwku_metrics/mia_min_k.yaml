@@ -1,0 +1,20 @@
+# @package eval.rwku.metrics.mia_min_k
+defaults:
+  - ../../data/datasets@datasets: RWKU_MIA
+  - ../../collator@collators: DataCollatorForSupervisedDatasetwithIndex
+
+batch_size: 8
+handler: mia_min_k
+k: 0.2
+
+datasets:
+  RWKU_MIA_forget:
+    args:
+      hf_args:
+        filter_column: "subject"
+        filter_values: ${eval.rwku.forget_subjects}
+  RWKU_MIA_holdout:
+    args:
+      hf_args:
+        filter_column: "subject"
+        filter_values: ${eval.rwku.retain_subjects}

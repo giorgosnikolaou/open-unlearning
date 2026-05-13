@@ -17,6 +17,7 @@ from evals.metrics.mia import (
     mia_gradnorm,
     mia_zlib,
     mia_reference,
+    mia_raw_loss,
 )
 from evals.metrics.utility import (
     hm_aggregate,
@@ -29,6 +30,7 @@ from evals.metrics.paraphrase import (
     winrate,
 )
 from evals.metrics.mmlu import mmlu
+from evals.metrics.rwku_fluency import rwku_fluency
 
 METRICS_REGISTRY: Dict[str, UnlearningMetric] = {}
 
@@ -77,10 +79,14 @@ _register_metric(mia_min_k_plus_plus)
 _register_metric(mia_gradnorm)
 _register_metric(mia_zlib)
 _register_metric(mia_reference)
+_register_metric(mia_raw_loss)
 
 # Register Utility metrics
 _register_metric(classifier_prob)
 _register_metric(mmlu)
+
+# Register RWKU metrics
+_register_metric(rwku_fluency)
 
 # Register Paraphrase metrics
 _register_metric(forget_quality)

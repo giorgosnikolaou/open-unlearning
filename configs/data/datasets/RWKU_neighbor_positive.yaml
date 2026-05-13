@@ -1,0 +1,10 @@
+RWKU_neighbor_positive:
+  handler: PartitionedPretrainingDataset
+  args:
+    hf_args:
+      path: "ngiorgos/RWKU-Unlearn"
+      name: "retain_data"
+      split: "Llama_3.2_1B_Instruct"
+    text_key: "text"
+    partition_key: "subject"
+    max_length: 2048

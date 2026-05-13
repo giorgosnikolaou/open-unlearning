@@ -13,6 +13,11 @@ holdout_split="holdout10"
 GPU=${GPU:-0}
 
 task_name="SB_TOFU/${model}/${forget_split}/Scorer"
+
+scorer_lr=0.05
+scorer_pop=15
+task_name="Learned/Optimal_slr_${scorer_lr}/Scorer"
+
 model_output="saves/unlearn/${task_name}"
 
 echo ""

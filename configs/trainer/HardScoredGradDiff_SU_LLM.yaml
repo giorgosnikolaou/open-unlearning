@@ -1,0 +1,10 @@
+defaults:
+  - HardScoredGradDiff
+
+method_args:
+  scoring_method: su_llm
+  scoring_args:
+    ref_model_path: null   # REQUIRED: HF path to base/pretrained model
+    gamma: null            # adaptive threshold
+    k: 0.0
+    context_size: 2

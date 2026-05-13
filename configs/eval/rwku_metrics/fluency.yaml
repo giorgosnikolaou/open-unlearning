@@ -1,0 +1,19 @@
+# @package eval.rwku.metrics.fluency
+defaults:
+  - ../../data/datasets@datasets: RWKU_utility_fluency
+  - ../../generation@generation_args: default
+
+handler: rwku_fluency
+batch_size: 4
+max_samples: 1000
+
+datasets:
+  RWKU_utility_fluency:
+    args:
+      hf_args:
+        filter_column: "subject"
+        filter_values: ${eval.rwku.forget_subjects}
+
+generation_args:
+  max_new_tokens: 512
+  do_sample: False

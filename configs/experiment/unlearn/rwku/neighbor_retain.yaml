@@ -1,0 +1,76 @@
+# @package _global_
+# RWKU unlearning with neighbor-based retain set from Wikipedia passages.
+# Retain data comes from ngiorgos/RWKU retain_data (neighbor passages),
+# filtered by forget_subject to match the forget subject list.
+
+defaults:
+  - override /model: Llama-3-8B-Instruct
+  - override /trainer: GradDiff
+  - override /data: unlearn
+  - override /data/datasets@data.forget: RWKU_forget_passage
+  - override /data/datasets@data.retain: RWKU_retain_passage
+  - override /eval: rwku
+
+model_family: llama3
+
+# Set A — celebrities to forget
+forget_subjects:
+  - "Beyoncé"
+  - "Blake Lively"
+  - "Bruce Springsteen"
+  - "Catherine, Princess of Wales"
+  - "Daniel Day-Lewis"
+  - "Donald Trump"
+  - "Dr. Dre"
+  - "Elon Musk"
+  - "Jennifer Lopez"
+  - "Jeff Goldblum"
+
+# Set B — celebrities to retain (MIA holdout reference)
+retain_subjects:
+  - "Evel Knievel"
+  - "Franklin D. Roosevelt"
+  - "Grace Kelly"
+  - "Halle Berry"
+  - "Henry Winkler"
+  - "Ice Cube"
+  - "James Earl Jones"
+  - "Jeff Bridges"
+  - "Jay-Z"
+  - "Jimmy Carter"
+
+model:
+  model_args:
+    pretrained_model_name_or_path: meta-llama/Meta-Llama-3-8B-Instruct
+
+data:
+  anchor: forget
+  forget:
+    RWKU_forget_passage:
+      args:
+        hf_args:
+          filter_column: "subject"
+          filter_values: ${forget_subjects}
+  retain:
+    RWKU_retain_passage:
+      args:
+        hf_args:
+          filter_column: "forget_subject"
+          filter_values: ${forget_subjects}
+
+eval:
+  rwku:
+    overwrite: true
+    forget_subjects: ${forget_subjects}
+    retain_subjects: ${retain_subjects}
+
+trainer:
+  args:
+    warmup_epochs: 1.0
+    learning_rate: 1e-6
+    weight_decay: 0.01
+    per_device_train_batch_size: 2
+    gradient_accumulation_steps: 8
+    num_train_epochs: 10
+
+task_name: ???

@@ -1,0 +1,41 @@
+defaults:
+  - finetune
+
+handler: SBGradDiffCorrectMatchedJoint
+
+args:
+  learning_rate: 1e-5
+  num_train_epochs: 5
+
+method_args:
+  alpha: 1.0
+  gamma: 1.0
+  beta: 5.0
+
+  scorer_lr: 5.0e-2
+  lambda_entropy: 1.0
+  lambda_population: 1.0
+  budget: 0.2
+  lambda_l2: 0.01
+
+  scorer:
+    _target_: scorers.LearnedScorer
+    cfg:
+      _target_: scorers.ScorerConfig
+      input_dimension: 2048
+      layers: 1
+      scale_factor: 1.0
+      use_sigmoid: true
+      zero_init: true
+      use_bias: true
+    pretrained_path: null
+
+  scorer_pretrain:
+    _target_: trainer.unlearn.sb.ScorerPretrainConfig
+    epochs: 0
+    lr: 5.0e-2
+    freeze_after: false
+
+  scorer_trainer:
+    _target_: trainer.unlearn.Scorer.NoOpScorerTrainer
+    _partial_: true

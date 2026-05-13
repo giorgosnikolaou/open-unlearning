@@ -83,6 +83,7 @@ class QualityJudge:
         substring_heuristic: bool = True,
         judge_instance: Optional[Any] = None,
         seed: Optional[int] = 42,
+        prompt_file: Optional[str] = None,
     ) -> None:
         self.eval_task = eval_task
         self.task = task
@@ -92,6 +93,7 @@ class QualityJudge:
         self.questions = questions
         self.logs = []
         self.judge_type = judge_type
+        self.prompt_file = prompt_file
         self.judge = None  # LocalJudge or OpenAI instance
         self.fix_qwen_keys = fix_qwen_keys
         self.substring_heuristic = substring_heuristic
@@ -311,7 +313,8 @@ class QualityJudge:
 
         # Load prompt from judges/prompts/ subdirectory
         prompt_dir = Path(__file__).parent / "prompts"
-        with open(prompt_dir / f"{self.judge_type}.txt", "r") as file:
+        prompt_filename = self.prompt_file or f"{self.judge_type}.txt"
+        with open(prompt_dir / prompt_filename, "r") as file:
             prompt_base = file.read()
 
         # Build alternate_json from the enriched generation file

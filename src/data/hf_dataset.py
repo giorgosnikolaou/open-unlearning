@@ -1,6 +1,6 @@
 """Simple HuggingFace Dataset wrapper that returns raw data without tokenization."""
 from torch.utils.data import Dataset
-from datasets import load_dataset as hf_load_dataset
+from data.utils import load_hf_dataset
 
 
 class HFDataset(Dataset):
@@ -17,7 +17,7 @@ class HFDataset(Dataset):
 
     def __init__(self, hf_args, **kwargs):
         super(HFDataset, self).__init__()
-        self.data = hf_load_dataset(**hf_args)
+        self.data = load_hf_dataset(**hf_args)
 
     def __len__(self):
         return len(self.data)

@@ -9,34 +9,52 @@ source /tmlscratch/nikolaou/open-unlearning/envs/.open-unlearning/bin/activate
 
 export MASTER_PORT=$(python -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")
 
-model="Llama-3.2-1B-Instruct"
+# model="Llama-3.2-1B-Instruct"
+model="Llama-3.1-8B-Instruct"
+
+retain_split="retain90"
+forget_split="forget10"
+winrate_baseline="saves/eval/SB_TOFU/${model}/baselines/${retain_split}_${forget_split}/paraphrase_evals/repetitiveness/model.jsonl"
 
 complete_name="hyperparam/tofu_forget10/GradDiff/trial_47_alpha0.797201_gamma0.116366_lr1.90e-05_retain_loss_typeNLL"
 
 complete_name="hyperparam/tofu_forget10/Scorer/trial_18_alpha0.339217_beta5.41151_gamma0.878545_lr2.49e-05"
 complete_name="hyperparam/tofu_forget10/Scorer/trial_34_alpha0.897739_beta7.3725_gamma4.64752_lr2.07e-05"
 
+
+model="Llama-3.2-1B-Instruct"
+complete_name="hyperparam/tofu_forget10_sb/SBGradDiffCorrect/trial_43_alpha1.09353_beta2.30529_gamma3.32958_lr1.93e-05"
+complete_name="hyperparam/tofu_forget10_sb/SBGradDiffCorrect/trial_55_alpha1.45751_beta2.36207_gamma4.36207_lr2.33e-05"
+
+# complete_name="hyperparam/tofu_forget10_8B/SBSimNPO/trial_0_lr2.05e-05"
+
 # complete_name="hyperparam/tofu_forget10/SatImp/trial_45_alpha0.494106_beta11.43318_beta20.169458_gamma0.873297_lr1.98e-05"
+
+model="Llama-3.1-8B-Instruct"
+complete_name="hyperparam/tofu_forget10_8B/SBGradDiffCorrect/trial_1_lr1.55e-05"
+
+complete_name="hyperparam/tofu_forget10_8B/SBGradDiffMatched/trial_1_lr1.22e-05"
+complete_name="hyperparam/tofu_forget10_8B/SBGradDiffCorrectMatched/trial_1_lr1.74e-05"
 
 ########################################
 # 2. TOFU EVALUATION (UNLEARNED)
 ########################################
-echo ""
-echo "=================================================="
-echo " TOFU Eval — ${complete_name}"
-echo "=================================================="
+# echo ""
+# echo "=================================================="
+# echo " TOFU Eval — ${complete_name}"
+# echo "=================================================="
 
-HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
-    python src/eval.py \
-    experiment=eval/tofu/default.yaml \
-    'eval=[tofu]' \
-    model=$model \
-    task_name=${complete_name} \
-    model.model_args.pretrained_model_name_or_path=$(pwd)/${complete_name} \
-    +model.model_args.token=$HF_TOKEN \
-    +model.tokenizer_args.token=$HF_TOKEN \
-    ++model.model_args.device_map='auto' \
-    paths.output_dir=$(pwd)/${complete_name}/tofu_evals
+# HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
+#     python src/eval.py \
+#     experiment=eval/tofu/default.yaml \
+#     'eval=[tofu]' \
+#     model=$model \
+#     task_name=${complete_name} \
+#     model.model_args.pretrained_model_name_or_path=$(pwd)/${complete_name} \
+#     +model.model_args.token=$HF_TOKEN \
+#     +model.tokenizer_args.token=$HF_TOKEN \
+#     ++model.model_args.device_map='auto' \
+#     paths.output_dir=$(pwd)/${complete_name}/tofu_evals
 
 
 ########################################
@@ -57,5 +75,12 @@ HYDRA_FULL_ERROR=1 CUDA_VISIBLE_DEVICES=0 \
     +model.model_args.token=$HF_TOKEN \
     +model.tokenizer_args.token=$HF_TOKEN \
     ++model.model_args.device_map='auto' \
-    +eval.paraphrase.metrics.winrate.baseline_path=saves/eval/ES_Llama-3.2-1B-Instruct_retain90/paraphrase_evals/repetitiveness/model.jsonl \
+    eval.paraphrase.metrics.forget_quality.max_samples=400 \
+    eval.paraphrase.metrics.retain_quality.max_samples=400 \
+    eval.paraphrase.metrics.forget_quality.datasets.TOFU_para_forget_eval.args.num_train_paraphrases=10 \
+    eval.paraphrase.metrics.retain_quality.datasets.TOFU_para_retain_eval.args.num_train_paraphrases=10 \
+    '++eval.paraphrase.metrics.repetitiveness.generation={max_new_tokens:128,do_sample:false,temperature:0.0}' \
+    +eval.paraphrase.metrics.winrate.baseline_path=${winrate_baseline} \
     paths.output_dir=$(pwd)/${complete_name}/paraphrase_evals
+    # +eval.paraphrase.metrics.winrate.baseline_path=saves/eval/ES_Llama-3.2-1B-Instruct_retain90/paraphrase_evals/repetitiveness/model.jsonl \
+    # +eval.paraphrase.metrics.winrate.baseline_path=saves/eval/ES_Llama-3.2-1B-Instruct_retain90/paraphrase_evals/repetitiveness/model.jsonl \

@@ -1,0 +1,25 @@
+# @package eval.paraphrase.metrics.forget_quality_level3
+defaults:
+  - ../../../data/datasets@datasets: RWKU_para_forget_level3
+
+handler: forget_quality
+output_dir: ${paths.output_dir}/paraphrase_forget_level3
+eval_task: forget_level3
+max_samples: 100
+
+# In-context retention (ICR) dataset — retain examples used as few-shot
+# prompts when evaluating forget quality. Must have 'question' and 'answer' columns.
+icr:
+  hf_args:
+    path: "ngiorgos/RWKU"
+    name: "qa"
+    split: "neighbor_level2"
+
+datasets:
+  RWKU_para_forget_level3:
+    args:
+      system_prompt_suffix: "Please briefly answer the following question. Keep your answer concise."
+
+judge: ${eval.paraphrase.judge}
+generation: ${eval.paraphrase.generation}
+output_base: ${eval.paraphrase.output}

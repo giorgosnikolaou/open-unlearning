@@ -33,7 +33,8 @@ class ParaphraseEvaluator(Evaluator):
         try:
             # --- Evaluate loop (mirrors Evaluator.evaluate, adds judge_instance) ---
             overwrite = self.eval_cfg.overwrite if overwrite is None else overwrite
-            model = self.prepare_model(model)
+            if model is not None:
+                model = self.prepare_model(model)
 
             output_dir = output_dir if output_dir else self.eval_cfg.output_dir
             logs_file_path = self.get_logs_file_path(output_dir)
@@ -46,7 +47,7 @@ class ParaphraseEvaluator(Evaluator):
             logger.info(f"Aggregated evaluations will be summarised in: {summary_file_path}")
 
             for metric_name, metric_fn in self.metrics.items():
-                if not overwrite and metric_name in logs and logs[metric_name]:
+                if not overwrite and metric_name in logs and logs[metric_name] and not logs[metric_name].get("generation_only"):
                     logger.info(f"Skipping {metric_name}, already evaluated.")
                     if "agg_value" in logs[metric_name]:
                         logger.info(
@@ -74,6 +75,10 @@ class ParaphraseEvaluator(Evaluator):
                     **metric_kwargs,
                     **metrics_args,
                 )
+                if result.get("generation_only"):
+                    logger.info(f"Generation complete for {metric_name} (judging deferred)")
+                    continue  # Don't persist — allows re-run for judging
+
                 if "agg_value" in result:
                     logger.info(f"Result for metric {metric_name}:\t{result['agg_value']}")
                 self.save_logs(logs, logs_file_path)

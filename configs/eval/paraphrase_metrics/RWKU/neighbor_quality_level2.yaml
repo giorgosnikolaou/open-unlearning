@@ -1,0 +1,17 @@
+# @package eval.paraphrase.metrics.retain_quality_level2
+defaults:
+  - ../../../data/datasets@datasets: RWKU_para_neighbor_level2
+
+handler: retain_quality
+output_dir: ${paths.output_dir}/paraphrase_neighbor_level2
+eval_task: neighbor_level2
+max_samples: 100
+
+datasets:
+  RWKU_para_neighbor_level2:
+    args:
+      system_prompt_suffix: "Please briefly answer the following question. Keep your answer concise."
+
+judge: ${eval.paraphrase.judge}
+generation: ${eval.paraphrase.generation}
+output_base: ${eval.paraphrase.output}
